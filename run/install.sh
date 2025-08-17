@@ -88,8 +88,8 @@ check_root() {
 
 # Detect operating system and environment
 detect_environment() {
-    # Check if we're in OpenAI Codex environment
-    if [[ -n "${CODEX_ENV_PYTHON_VERSION:-}" ]] || [[ -n "${CODEX_ENV_NODE_VERSION:-}" ]] || [[ "$PWD" == /workspace/* ]]; then
+    # Check if we're in OpenAI Codex environment (multiple detection methods)
+    if [[ -n "${CODEX_ENV_PYTHON_VERSION:-}" ]] || [[ -n "${CODEX_ENV_NODE_VERSION:-}" ]] || [[ "$PWD" == /workspace/* ]] || [[ "$HOME" == "/root" && -f "/usr/bin/uv" && -f "/usr/bin/node" ]]; then
         echo "codex"
         return
     fi
