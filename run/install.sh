@@ -2,6 +2,15 @@
 
 # ARCHON RELOADED - Development Environment Installer
 # Optimized for comprehensive setup with error handling and validation
+#
+# Usage:
+#   ./install.sh                    # Standard installation
+#   CONTAINER=true ./install.sh     # Force container mode
+#   SKIP_DOCKER=true ./install.sh   # Skip Docker installation
+#
+# Container Environments (Codex, GitHub Codespaces, etc.):
+#   The script automatically detects container environments and adapts accordingly.
+#   It will allow running as root and skip Docker if the socket isn't available.
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
@@ -50,9 +59,19 @@ version_ge() {
 
 # Check if running as root
 check_root() {
+    # Allow running as root in container environments
     if [[ $EUID -eq 0 ]]; then
-        error "This script should not be run as root for security reasons"
-        exit 1
+        # Check if we're in a container environment
+        if [[ -f /.dockerenv ]] || [[ -n "${CONTAINER:-}" ]] || [[ -n "${CODESPACE_NAME:-}" ]] || [[ -n "${GITHUB_CODESPACES:-}" ]] || [[ "$USER" == "root" && -n "${DEBIAN_FRONTEND:-}" ]]; then
+            warn "Running as root in container environment - this is expected"
+            export RUNNING_IN_CONTAINER=true
+        else
+            error "This script should not be run as root for security reasons"
+            info "If you're in a container environment, set CONTAINER=true: CONTAINER=true ./install.sh"
+            exit 1
+        fi
+    else
+        export RUNNING_IN_CONTAINER=false
     fi
 }
 
@@ -120,6 +139,12 @@ check_system_requirements() {
 install_docker() {
     log "Checking Docker installation..."
     
+    # In some container environments, Docker might not be available or needed
+    if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]] && [[ -n "${SKIP_DOCKER:-}" ]]; then
+        warn "Skipping Docker installation in container environment (SKIP_DOCKER is set)"
+        return 0
+    fi
+    
     if command -v docker >/dev/null 2>&1; then
         local docker_version
         docker_version=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
@@ -137,8 +162,17 @@ install_docker() {
         case $os_type in
             ubuntu|linux)
                 curl -fsSL https://get.docker.com -o get-docker.sh
-                sudo sh get-docker.sh
-                sudo usermod -aG docker "$USER"
+                if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+                    # In container, run without sudo
+                    sh get-docker.sh
+                else
+                    sudo sh get-docker.sh
+                fi
+                
+                # Only try to modify user groups if not in container
+                if [[ "${RUNNING_IN_CONTAINER:-false}" != "true" ]] && command -v usermod >/dev/null 2>&1; then
+                    sudo usermod -aG docker "$USER" || warn "Could not add user to docker group"
+                fi
                 rm get-docker.sh
                 ;;
             macos)
@@ -162,8 +196,13 @@ install_docker() {
         
         case $os_type in
             ubuntu|linux)
-                sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-                sudo chmod +x /usr/local/bin/docker-compose
+                if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+                    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                    chmod +x /usr/local/bin/docker-compose
+                else
+                    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                    sudo chmod +x /usr/local/bin/docker-compose
+                fi
                 ;;
             macos)
                 brew install docker-compose
@@ -171,14 +210,19 @@ install_docker() {
         esac
     fi
     
-    # Test Docker
+    # Test Docker (skip if in container and Docker socket not available)
     if ! docker ps >/dev/null 2>&1; then
-        error "Docker is not running or current user lacks permissions"
-        info "Try: sudo usermod -aG docker $USER && newgrp docker"
-        exit 1
+        if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+            warn "Docker daemon not accessible in container environment"
+            warn "This is normal for some container setups. Proceeding without Docker tests."
+        else
+            error "Docker is not running or current user lacks permissions"
+            info "Try: sudo usermod -aG docker $USER && newgrp docker"
+            exit 1
+        fi
+    else
+        success "Docker installation verified"
     fi
-    
-    success "Docker installation verified"
 }
 
 # Install Node.js and npm
@@ -201,11 +245,19 @@ install_nodejs() {
         
         case $os_type in
             ubuntu|linux)
-                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-                sudo apt-get install -y nodejs
+                curl -fsSL https://deb.nodesource.com/setup_20.x | if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then bash -; else sudo -E bash -; fi
+                if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+                    apt-get install -y nodejs
+                else
+                    sudo apt-get install -y nodejs
+                fi
                 ;;
             macos)
-                brew install node@20
+                if command -v brew >/dev/null 2>&1; then
+                    brew install node@20
+                else
+                    warn "Homebrew not found. Please install Node.js manually"
+                fi
                 ;;
             *)
                 warn "Please install Node.js 20.x manually from https://nodejs.org/"
@@ -243,15 +295,28 @@ install_python() {
         
         case $os_type in
             ubuntu|linux)
-                sudo apt-get update
-                sudo apt-get install -y software-properties-common
-                sudo add-apt-repository ppa:deadsnakes/ppa -y
-                sudo apt-get update
-                sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
-                sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+                if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+                    apt-get update
+                    apt-get install -y software-properties-common
+                    add-apt-repository ppa:deadsnakes/ppa -y
+                    apt-get update
+                    apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
+                    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 || true
+                else
+                    sudo apt-get update
+                    sudo apt-get install -y software-properties-common
+                    sudo add-apt-repository ppa:deadsnakes/ppa -y
+                    sudo apt-get update
+                    sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
+                    sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+                fi
                 ;;
             macos)
-                brew install python@3.12
+                if command -v brew >/dev/null 2>&1; then
+                    brew install python@3.12
+                else
+                    warn "Homebrew not found. Please install Python manually"
+                fi
                 ;;
             *)
                 warn "Please install Python 3.12+ manually from https://python.org/"
@@ -263,8 +328,22 @@ install_python() {
     if ! command -v uv >/dev/null 2>&1; then
         log "Installing uv package manager..."
         curl -LsSf https://astral.sh/uv/install.sh | sh
-        source "$HOME/.cargo/env" 2>/dev/null || true
+        
+        # Handle different shell environments
+        if [[ -f "$HOME/.cargo/env" ]]; then
+            source "$HOME/.cargo/env" 2>/dev/null || true
+        fi
         export PATH="$HOME/.cargo/bin:$PATH"
+        
+        # Alternative installation if first method fails
+        if ! command -v uv >/dev/null 2>&1; then
+            log "Trying alternative uv installation method..."
+            if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+                pip3 install uv || python3 -m pip install uv
+            else
+                pip3 install --user uv || python3 -m pip install --user uv
+            fi
+        fi
     fi
     
     success "Python and uv installation verified"
@@ -379,6 +458,18 @@ install_nodejs_dependencies() {
 build_docker_images() {
     log "Building Docker images..."
     
+    # Check if Docker is available
+    if ! command -v docker >/dev/null 2>&1 || ! docker ps >/dev/null 2>&1; then
+        error "Docker is not available for building images"
+        if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+            warn "This is normal in some container environments"
+            warn "Images can be built later when Docker is available"
+            return 0
+        else
+            exit 1
+        fi
+    fi
+    
     # Build images with proper caching
     if docker-compose build --parallel 2>/dev/null; then
         success "Docker images built successfully"
@@ -386,7 +477,13 @@ build_docker_images() {
         success "Docker images built successfully"
     else
         error "Failed to build Docker images"
-        exit 1
+        if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+            warn "Build failed in container environment - this may be expected"
+            warn "Try building manually later: docker-compose build"
+            return 0
+        else
+            exit 1
+        fi
     fi
 }
 
@@ -394,13 +491,27 @@ build_docker_images() {
 verify_installation() {
     log "Verifying installation..."
     
+    # Check if Docker is available
+    if ! command -v docker >/dev/null 2>&1 || ! docker ps >/dev/null 2>&1; then
+        warn "Docker not available for verification"
+        if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+            info "This is normal in container environments"
+            info "Manual verification will be needed once Docker is available"
+            return 0
+        else
+            error "Cannot verify installation without Docker"
+            exit 1
+        fi
+    fi
+    
     # Start services
     log "Starting services..."
     if docker-compose up -d 2>/dev/null || docker compose up -d 2>/dev/null; then
         success "Services started"
     else
         error "Failed to start services"
-        exit 1
+        warn "You can try starting manually later with: docker-compose up -d"
+        return 0
     fi
     
     # Wait for services to be ready
@@ -460,6 +571,19 @@ main() {
     check_root
     check_system_requirements
     
+    # Container environment detection and messaging
+    if [[ "${RUNNING_IN_CONTAINER:-false}" == "true" ]]; then
+        info "Container environment detected"
+        info "Some installation steps will be adapted for container use"
+        
+        # Check if we should skip Docker
+        if [[ ! -S /var/run/docker.sock ]] && [[ -z "${DOCKER_HOST:-}" ]]; then
+            warn "Docker socket not available in container"
+            warn "Setting SKIP_DOCKER=true to skip Docker installation"
+            export SKIP_DOCKER=true
+        fi
+    fi
+    
     # Core dependencies
     install_docker
     install_nodejs
@@ -470,9 +594,14 @@ main() {
     install_python_dependencies
     install_nodejs_dependencies
     
-    # Docker setup
-    build_docker_images
-    verify_installation
+    # Docker setup (skip if not available in container)
+    if [[ -z "${SKIP_DOCKER:-}" ]]; then
+        build_docker_images
+        verify_installation
+    else
+        warn "Skipping Docker build and verification (SKIP_DOCKER is set)"
+        info "You can build manually later with: docker-compose build"
+    fi
     
     echo -e "${GREEN}"
     echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -480,23 +609,34 @@ main() {
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     
-    echo -e "${CYAN}Access your ARCHON RELOADED platform:${NC}"
-    echo -e "  ${GREEN}🌐 Web Interface:${NC}     http://localhost:3737"
-    echo -e "  ${GREEN}📚 Documentation:${NC}     http://localhost:3838"
-    echo -e "  ${GREEN}⚡ API Docs:${NC}          http://localhost:8080/docs"
-    echo -e "  ${GREEN}🔧 MCP Connection:${NC}    http://localhost:8051/sse"
+    if [[ -z "${SKIP_DOCKER:-}" ]]; then
+        echo -e "${CYAN}Access your ARCHON RELOADED platform:${NC}"
+        echo -e "  ${GREEN}🌐 Web Interface:${NC}     http://localhost:3737"
+        echo -e "  ${GREEN}📚 Documentation:${NC}     http://localhost:3838"
+        echo -e "  ${GREEN}⚡ API Docs:${NC}          http://localhost:8080/docs"
+        echo -e "  ${GREEN}🔧 MCP Connection:${NC}    http://localhost:8051/sse"
+        echo ""
+        echo -e "${BLUE}Useful commands:${NC}"
+        echo -e "  ${GREEN}View logs:${NC}            docker-compose logs -f"
+        echo -e "  ${GREEN}Restart services:${NC}     docker-compose restart"
+        echo -e "  ${GREEN}Stop services:${NC}        docker-compose down"
+        echo -e "  ${GREEN}Update services:${NC}      docker-compose pull && docker-compose up -d"
+    else
+        echo -e "${CYAN}Dependencies installed successfully!${NC}"
+        echo -e "${YELLOW}Note: Docker services were skipped in container environment${NC}"
+        echo ""
+        echo -e "${BLUE}To start services manually:${NC}"
+        echo -e "  ${GREEN}Build images:${NC}         docker-compose build"
+        echo -e "  ${GREEN}Start services:${NC}       docker-compose up -d"
+        echo -e "  ${GREEN}Check status:${NC}         docker-compose ps"
+    fi
+    
     echo ""
     echo -e "${YELLOW}Next steps:${NC}"
     echo -e "  1. Edit .env file with your Supabase credentials"
     echo -e "  2. Set up database using migration scripts (see docs)"
     echo -e "  3. Configure API keys in Settings page"
     echo -e "  4. Start developing with MCP integration!"
-    echo ""
-    echo -e "${BLUE}Useful commands:${NC}"
-    echo -e "  ${GREEN}View logs:${NC}            docker-compose logs -f"
-    echo -e "  ${GREEN}Restart services:${NC}     docker-compose restart"
-    echo -e "  ${GREEN}Stop services:${NC}        docker-compose down"
-    echo -e "  ${GREEN}Update services:${NC}      docker-compose pull && docker-compose up -d"
     echo ""
     echo -e "${PURPLE}For support and documentation, visit:${NC}"
     echo -e "  📖 Local docs: http://localhost:3838"
