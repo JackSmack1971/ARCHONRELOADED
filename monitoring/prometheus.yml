@@ -1,0 +1,9 @@
+global:
+  scrape_interval: ${PROMETHEUS_SCRAPE_INTERVAL:-15s}
+
+scrape_configs:
+  - job_name: 'embedding-services'
+    static_configs:
+      - targets:
+          - '${TEI_METRICS_ENDPOINT:-tei:9090}'
+          - '${VLLM_METRICS_ENDPOINT:-vllm:9090}'

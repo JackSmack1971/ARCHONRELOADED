@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+
+RUN adduser --system --uid 1001 appuser
+
+COPY config/config.yml /app/config.yml
+COPY models/ /app/models/
+RUN chown -R appuser:appuser /app && chmod 640 /app/config.yml
+
+USER appuser
+
+ENV VLLM_MODEL_NAME=${VLLM_MODEL_NAME}
+ENV VLLM_PORT=${VLLM_PORT:-8000}
+
+RUN pip install --no-cache-dir vllm
+
+ENTRYPOINT ["python", "-m", "vllm.entrypoints.openai.api_server", "--host", "0.0.0.0", "--port", "${VLLM_PORT}", "--model", "${VLLM_MODEL_NAME}", "--config", "/app/config.yml"]

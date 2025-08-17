@@ -1,0 +1,8 @@
+model:
+  name: ${VLLM_MODEL_NAME}
+  revision: ${VLLM_MODEL_REVISION:-latest}
+server:
+  host: 0.0.0.0
+  port: ${VLLM_PORT:-8000}
+  timeout_seconds: ${VLLM_TIMEOUT:-30}
+  max_retries: ${VLLM_RETRIES:-3}

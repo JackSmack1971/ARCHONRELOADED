@@ -1,0 +1,8 @@
+api:
+  endpoint: ${TEI_API_URL}
+  token: ${TEI_API_TOKEN}
+  timeout_seconds: ${TEI_API_TIMEOUT:-30}
+  max_retries: ${TEI_API_RETRIES:-3}
+storage:
+  path: ${TEI_STORAGE_PATH:-/app/models}
+  secure: true
