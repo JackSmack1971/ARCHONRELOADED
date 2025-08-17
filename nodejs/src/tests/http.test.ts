@@ -24,6 +24,20 @@ describe('secureFetch', () => {
     expect(logger.error).toHaveBeenCalled()
   })
 
+  it('times out and throws HTTPError', async () => {
+    vi.useFakeTimers()
+    global.fetch = vi.fn().mockImplementation((_u, { signal }: any) => {
+      return new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+    })
+    const p = secureFetch('https://example.com', {}, 0, 1)
+    p.catch(() => {})
+    await vi.runAllTimersAsync()
+    await expect(p).rejects.toBeInstanceOf(HTTPError)
+    expect(logger.error).toHaveBeenCalled()
+  })
+
   it('honors max retries and throws HTTPError', async () => {
     vi.useFakeTimers()
     const p = secureFetch('https://example.com', {}, 2, 1)
