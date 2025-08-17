@@ -1,0 +1,12 @@
+replicaCount: 1
+image:
+  repository: archon/archon-mcp
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 80
+envSecret:
+  name: archon-mcp-secrets
+  key: apiKey
+
