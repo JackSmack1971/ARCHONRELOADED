@@ -88,47 +88,40 @@ check_root() {
 
 # Detect operating system and environment
 detect_environment() {
-    # Debug output
-    echo "DEBUG: PWD=$PWD, HOME=$HOME, USER=${USER:-unknown}" >&2
-    echo "DEBUG: Checking for Codex indicators..." >&2
+    # Debug: Show current environment info
+    echo "DEBUG: PWD=$PWD, HOME=$HOME, USER=${USER:-$(whoami)}" >&2
+    echo "DEBUG: CODEX_ENV vars: PYTHON=${CODEX_ENV_PYTHON_VERSION:-unset}, NODE=${CODEX_ENV_NODE_VERSION:-unset}" >&2
     
     # Check if we're in OpenAI Codex environment (multiple detection methods)
-    local is_codex=false
-    
-    # Method 1: Check CODEX_ENV_* variables
+    # Method 1: CODEX_ENV environment variables
     if [[ -n "${CODEX_ENV_PYTHON_VERSION:-}" ]] || [[ -n "${CODEX_ENV_NODE_VERSION:-}" ]]; then
-        echo "DEBUG: Found CODEX_ENV variables" >&2
-        is_codex=true
-    fi
-    
-    # Method 2: Check workspace directory pattern (better pattern matching)
-    case "$PWD" in
-        /workspace/*)
-            echo "DEBUG: Found /workspace/* directory pattern" >&2
-            is_codex=true
-            ;;
-    esac
-    
-    # Method 3: Check for mise tool (specific to Codex universal environment)
-    if command -v mise >/dev/null 2>&1; then
-        echo "DEBUG: Found mise tool (Codex universal indicator)" >&2
-        is_codex=true
-    fi
-    
-    # Method 4: Check for universal container indicators
-    if [[ "$HOME" == "/root" ]] && command -v uv >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
-        echo "DEBUG: Found root + uv + node (universal container pattern)" >&2
-        is_codex=true
-    fi
-    
-    # Method 5: Check for /workspace parent directory
-    if [[ -d "/workspace" ]] && [[ "$USER" == "root" ]]; then
-        echo "DEBUG: Found /workspace directory + root user" >&2
-        is_codex=true
-    fi
-    
-    if [[ "$is_codex" == "true" ]]; then
         echo "codex"
+        return
+    fi
+    
+    # Method 2: Working directory in /workspace/*
+    if [[ "$PWD" == /workspace/* ]]; then
+        echo "codex"
+        return
+    fi
+    
+    # Method 3: Repository cloned to /workspace/* (check if we're inside such a directory)
+    if [[ "$(pwd)" == /workspace/* ]]; then
+        echo "codex"
+        return
+    fi
+    
+    # Method 4: Universal image indicators (Ubuntu 24.04 + root + universal tools)
+    if [[ "$HOME" == "/root" && -f "/usr/bin/uv" && -f "/usr/bin/node" && -f "/etc/os-release" ]]; then
+        if grep -q "Ubuntu 24.04" /etc/os-release 2>/dev/null; then
+            echo "codex"
+            return
+        fi
+    fi
+    
+    # Method 5: Check if running in universal image specifically
+    if [[ -f "/usr/bin/mise" && -f "/usr/bin/uv" && "$USER" == "root" ]]; then
+        echo "codex" 
         return
     fi
     
