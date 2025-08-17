@@ -53,19 +53,21 @@ ARCHON RELOADED is a **microservices-based AI development platform** that revolu
 
 | Category | Technology | Purpose |
 |----------|------------|---------|
-| **Backend** | Python 3.12+ | Core business logic and services |
-| **API Framework** | FastAPI + Socket.IO | REST API and real-time communication |
-| **Frontend** | React 18.3 + TypeScript | Modern web interface |
-| **Database** | Supabase (PostgreSQL + pgvector) | Data storage with vector embeddings |
-| **Package Management** | uv (Python), npm (Node.js) | Dependency management |
-| **Containerization** | Docker + docker-compose | Service orchestration |
-| **AI Integration** | MCP Protocol | AI coding assistant connectivity |
+| **Backend** | Node.js 20+ + TypeScript 5.x | High-performance runtime with strong typing |
+| **API Framework** | Hyper Express + uWebSockets.js | Zero-copy HTTP/WebSocket server with streaming |
+| **Frontend** | React 18.3 + Next.js 14 | Modern web interface with App Router |
+| **Vector Database** | Qdrant (primary), Milvus (optional) | HNSW-based vector search with NVMe backing |
+| **Metadata Store** | MongoDB 7.x | Document storage with retryable writes |
+| **Cache & Queue** | Redis 7.x | Sessions, hot caches, and streaming queues |
+| **Embeddings** | BGE-Large v1.5, Jina v2 (TEI/vLLM) | Self-hosted embeddings with fallbacks |
+| **Orchestration** | Kubernetes + Docker | Cloud-native deployment with HPA/PDB |
+| **AI Integration** | MCP Streamable HTTP (primary) | High-throughput bidirectional streaming |
 
 ---
 
 ## 🏛️ Architecture Overview
 
-ARCHON uses a true microservices architecture with clear separation of concerns, allowing each service to scale independently while maintaining strong integration through well-defined APIs.
+ARCHON uses a **cloud-native microservices architecture** optimized for high-performance real-time applications, built on Node.js with Hyper Express for superior concurrency and streaming capabilities.
 
 ### System Architecture
 
@@ -91,43 +93,47 @@ ARCHON uses a true microservices architecture with clear separation of concerns,
 }}%%
 flowchart TB
     subgraph "AI Development Tools"
-        A1[Claude Code]
-        A2[Cursor IDE]
-        A3[Windsurf]
+        A1[Claude Code<br/>stdio]
+        A2[Cursor IDE<br/>Streamable HTTP]
+        A3[Windsurf<br/>Streamable HTTP]
     end
     
     subgraph "ARCHON Platform"
         subgraph "Frontend Layer"
-            F[React UI<br/>:3737]
+            F[React + Next.js 14<br/>:3737]
         end
         
         subgraph "API Layer"
-            S[Server API<br/>FastAPI + Socket.IO<br/>:8080]
+            S[Hyper Express Server<br/>Node.js 20 + TypeScript<br/>:8080]
         end
         
-        subgraph "Protocol Layer"
-            M[MCP Server<br/>HTTP Wrapper<br/>:8051]
+        subgraph "MCP Protocol Layer"
+            M[MCP Server<br/>Streamable HTTP Primary<br/>:8051]
         end
         
-        subgraph "AI Processing"
-            AG[Agents Service<br/>PydanticAI<br/>:8052]
+        subgraph "Knowledge Engine"
+            V[Qdrant Vector DB<br/>HNSW + NVMe]
+            E[BGE/Jina Embeddings<br/>TEI/vLLM]
+            H[Hybrid Search<br/>Dense + BM25]
         end
         
         subgraph "Data Layer"
-            DB[(Supabase<br/>PostgreSQL + pgvector)]
-            CACHE[(Redis Cache)]
+            DB[(MongoDB 7.x<br/>Metadata)]
+            CACHE[(Redis 7.x<br/>Cache + Streams)]
         end
     end
     
-    A1 -.->|MCP Protocol| M
-    A2 -.->|MCP Protocol| M
-    A3 -.->|MCP Protocol| M
+    A1 -.->|stdio/JSON-RPC| M
+    A2 -.->|MCP Streamable HTTP| M
+    A3 -.->|MCP Streamable HTTP| M
     
-    F <-->|HTTP + WebSocket| S
-    M <-->|HTTP API| S
-    S <-->|HTTP API| AG
-    S <-->|SQL + Vector Search| DB
-    S <-->|Cache| CACHE
+    F <-->|WebSocket + HTTP/2| S
+    M <-->|JSON-RPC over HTTP| S
+    S <-->|Vector Search| V
+    S <-->|Embedding Requests| E
+    V <-->|Hybrid Retrieval| H
+    S <-->|Metadata Queries| DB
+    S <-->|Cache + Queue| CACHE
     
     style A1 fill:#6f55ff,color:#fff
     style A2 fill:#6f55ff,color:#fff
@@ -135,8 +141,8 @@ flowchart TB
     style F fill:#3fb1ff,color:#fff
     style S fill:#00d38a,color:#000
     style M fill:#ff6b35,color:#fff
-    style AG fill:#ffbe0b,color:#000
-    style DB fill:#8338ec,color:#fff
+    style V fill:#8338ec,color:#fff
+    style E fill:#ffbe0b,color:#000
 ```
 
 ### Service Communication Flow
@@ -175,16 +181,34 @@ sequenceDiagram
 
 | Service | Location | Port | Purpose | Key Technologies |
 |---------|----------|------|---------|------------------|
-| **Frontend UI** | `archon-ui-main/` | 3737 | Web dashboard and interface | React 18, TypeScript, TailwindCSS |
-| **Server API** | `python/src/server/` | 8080 | Core business logic and APIs | FastAPI, Socket.IO, Service Layer |
-| **MCP Server** | `python/src/mcp/` | 8051 | Protocol adapter for AI clients | HTTP client, MCP tool definitions |
-| **Agents Service** | `python/src/agents/` | 8052 | AI processing and generation | PydanticAI, streaming responses |
+| **Frontend UI** | `archon-ui-main/` | 3737 | Web dashboard and interface | React 18, Next.js 14, TypeScript |
+| **MCP Server** | `nodejs/src/mcp/` | 8051 | High-performance MCP protocol adapter | Hyper Express, JSON-RPC 2.0, Streamable HTTP |
+| **Knowledge Engine** | `nodejs/src/engine/` | 8080 | Vector search and RAG pipeline | Qdrant, BGE/Jina embeddings, hybrid search |
+| **Embedding Service** | `nodejs/src/embeddings/` | 8082 | Self-hosted embedding generation | TEI/vLLM, BGE-Large v1.5, Jina v2 |
+
+### Transport Protocol Priorities
+
+| Protocol | Status | Use Case | Performance |
+|----------|--------|----------|-------------|
+| **MCP Streamable HTTP** | **Primary** | Cursor, Windsurf, future tools | High-throughput bidirectional streaming |
+| **stdio/JSON-RPC** | **Secondary** | Claude Code, local development | Low-latency local communication |
+| **Server-Sent Events** | **Legacy** | Compatibility fallback | Phased deprecation planned |
+
+### Performance SLOs
+
+| Metric | Target | Critical Threshold |
+|--------|--------|--------------------|
+| **Dense Vector Search** | p95 < 200ms | p99 < 400ms |
+| **Hybrid Search** | p95 < 350ms | p99 < 500ms |
+| **Concurrent Sessions** | ≥250 per shard | <0.5% error rate |
+| **Document Ingestion** | TTFI < 30s (50-page PDF) | < 60s worst case |
+| **System Availability** | ≥99.9% uptime | Error budget policy |
 
 ---
 
 ## 📊 Core Components
 
-### RAG Pipeline Architecture
+### Advanced RAG Pipeline Architecture
 
 ```mermaid
 %%{init:{
@@ -205,20 +229,26 @@ flowchart LR
     
     subgraph "Processing Pipeline"
         E[Text Extraction]
-        C[Content Chunking]
-        V[Vector Embedding]
+        C[Semantic Chunking<br/>250-500 tokens]
+        V[BGE/Jina Embeddings<br/>TEI/vLLM]
     end
     
-    subgraph "Storage & Search"
-        PG[(pgvector)]
-        S[Semantic Search]
-        R[Result Reranking]
+    subgraph "Hybrid Storage"
+        Q[Qdrant Vector DB<br/>HNSW Index]
+        B[BM25 Search<br/>Elasticsearch]
+        M[MongoDB Metadata]
     end
     
-    subgraph "AI Integration"
-        Q[Query Processing]
-        G[LLM Generation]
-        RS[Response Streaming]
+    subgraph "Intelligent Retrieval"
+        H[Hybrid Search<br/>Dense + Sparse]
+        R[MMR Reranking]
+        C2[Result Caching]
+    end
+    
+    subgraph "AI Generation"
+        LLM[Multi-LLM Support<br/>OpenAI/Gemini/Ollama]
+        S[Streaming Responses]
+        A[Attribution & Sources]
     end
     
     W --> E
@@ -226,13 +256,35 @@ flowchart LR
     F --> E
     E --> C
     C --> V
-    V --> PG
-    PG --> S
-    S --> R
-    R --> Q
-    Q --> G
-    G --> RS
+    V --> Q
+    C --> B
+    C --> M
+    Q --> H
+    B --> H
+    H --> R
+    R --> C2
+    C2 --> LLM
+    LLM --> S
+    S --> A
 ```
+
+### Embedding Strategy
+
+| Model | Dimensions | Use Case | Serving |
+|-------|------------|----------|---------|
+| **BGE-Large v1.5** | 1024 | Default, high-quality retrieval | TEI/vLLM self-hosted |
+| **Jina v2 Base** | 768 | Cross-lingual, faster inference | TEI/vLLM self-hosted |
+| **OpenAI TE3** | 1536 | Fallback, managed service | OpenAI API |
+| **Cohere Embed** | 1024 | Alternative fallback | Cohere API |
+
+### Vector Database Configuration
+
+**Qdrant HNSW Parameters:**
+- **M**: 32 (connections per node)
+- **ef_construction**: 256 (build-time search depth)
+- **ef_search**: 100-200 (query-time search depth)
+- **Quantization**: Optional scalar/product quantization
+- **Storage**: NVMe-backed for sub-200ms p95 latency
 
 ### Knowledge Management System
 
@@ -306,36 +358,102 @@ classDiagram
 | Requirement | Version | Purpose |
 |-------------|---------|---------|
 | **Docker** | 20.0+ | Container orchestration |
-| **Docker Compose** | 2.0+ | Multi-service management |
-| **Node.js** | 20.x | Frontend development (optional) |
-| **Python** | 3.12+ | Backend development (optional) |
+| **Kubernetes** | 1.25+ | Cloud-native deployment (recommended) |
+| **Node.js** | 20.x LTS | Backend runtime |
+| **npm/yarn** | Latest | Package management |
+
+### Cloud-Native Deployment (Recommended)
+
+**Kubernetes Configuration:**
+
+```yaml
+# Key cluster requirements
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: archon
+
+---
+# HPA Configuration
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: archon-mcp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: archon-mcp
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Pods
+    pods:
+      metric:
+        name: request_latency_p95
+      target:
+        type: AverageValue
+        averageValue: "200m"  # 200ms
+```
+
+**Node Pool Configuration:**
+
+```yaml
+# General application node pool
+nodeSelector:
+  archon.io/node-type: "general"
+tolerations:
+- key: archon.io/general
+  operator: Equal
+  value: "true"
+  effect: NoSchedule
+
+# Storage-optimized pool for Qdrant
+nodeSelector:
+  archon.io/node-type: "storage"
+  storage-type: "nvme"
+tolerations:
+- key: archon.io/storage
+  operator: Equal  
+  value: "true"
+  effect: NoSchedule
+```
 
 ### Environment Configuration
 
-Create a `.env` file in the root directory:
-
 ```bash
-# Required - Database Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=eyJ0eXAi...your_service_key
+# Core Services
+NODE_ENV=production
+LOG_LEVEL=info
 
-# Optional - AI Provider Configuration (can be set via UI)
-OPENAI_API_KEY=sk-...your_openai_key
-GOOGLE_API_KEY=...your_google_key
+# Vector Database
+QDRANT_URL=http://qdrant-cluster:6333
+QDRANT_API_KEY=your_qdrant_key
+QDRANT_COLLECTION=archon_vectors
 
-# Optional - Enhanced Logging
-LOGFIRE_ENABLED=false              # Toggle enhanced logging
-LOGFIRE_TOKEN=pylf_...             # Required when LOGFIRE_ENABLED=true
+# Embeddings Service  
+EMBEDDING_MODEL=bge-large-en-v1.5  # or jina-embeddings-v2-base
+TEI_ENDPOINT=http://tei-service:8080
+VLLM_ENDPOINT=http://vllm-service:8000
 
-# Service Ports (optional customization)
-ARCHON_UI_PORT=3737
-ARCHON_SERVER_PORT=8080
-ARCHON_MCP_PORT=8051
-ARCHON_AGENTS_PORT=8052
-ARCHON_DOCS_PORT=3838
+# Metadata & Cache
+MONGODB_URI=mongodb://mongo-cluster:27017/archon
+REDIS_URL=redis://redis-cluster:6379
 
-# Hostname Configuration
-HOST=localhost                     # Use custom domain if needed
+# AI Provider Fallbacks (optional)
+OPENAI_API_KEY=sk-...your_key
+COHERE_API_KEY=co-...your_key
+
+# Performance Tuning
+MAX_CONCURRENT_SESSIONS=250
+VECTOR_CACHE_TTL=3600
+EMBEDDING_BATCH_SIZE=1024
 ```
 
 ### Quick Installation
@@ -472,113 +590,151 @@ ARCHONRELOADED/
 ├── 📄 CONTRIBUTING.md               # Contribution guidelines
 ├── 📄 AGENTS.md                     # AI collaboration guide
 ├── 🐳 docker-compose.yml           # Multi-service orchestration
-├── 🐳 docker-compose.docs.yml      # Optional documentation service
+├── ☸️ k8s/                          # Kubernetes manifests
+│   ├── namespace.yaml               # Cluster namespace
+│   ├── configmap.yaml               # Configuration
+│   ├── secret.yaml                  # Encrypted secrets
+│   ├── deployments/                 # Service deployments
+│   ├── services/                    # Service definitions
+│   ├── ingress.yaml                 # Traffic routing
+│   └── hpa.yaml                     # Horizontal Pod Autoscaler
 ├── ⚙️ .env.example                 # Environment template
 │
-├── 🐍 python/                      # Backend services (Python 3.12+)
-│   ├── 📄 pyproject.toml           # Python dependencies (uv)
-│   ├── 🔒 uv.lock                  # Dependency lock file
-│   ├── 🐳 Dockerfile.server        # Server service container
+├── 🟢 nodejs/                      # Backend services (Node.js 20 + TypeScript)
+│   ├── 📄 package.json             # Node.js dependencies
+│   ├── 📄 tsconfig.json            # TypeScript configuration
 │   ├── 🐳 Dockerfile.mcp           # MCP service container
-│   ├── 🐳 Dockerfile.agents        # Agents service container
+│   ├── 🐳 Dockerfile.engine        # Knowledge engine container
+│   ├── 🐳 Dockerfile.embeddings    # Embedding service container
 │   ├── 📁 src/                     # Source code
-│   │   ├── 🔧 main.py              # Application entry point
-│   │   ├── 🌐 server/              # FastAPI application
-│   │   │   ├── 🔌 api_routes/      # REST API endpoints
-│   │   │   │   ├── knowledge_api.py    # Knowledge management API
-│   │   │   │   ├── projects_api.py     # Project & task management
-│   │   │   │   ├── mcp_api.py          # MCP server control
-│   │   │   │   ├── settings_api.py     # Configuration API
-│   │   │   │   └── agent_chat_api.py   # AI agent interactions
+│   │   ├── 🔧 index.ts             # Application entry point
+│   │   ├── 🌐 mcp/                 # MCP Server (Hyper Express)
+│   │   │   ├── 📄 server.ts        # MCP protocol server
+│   │   │   ├── 🔌 transports/      # Transport implementations
+│   │   │   │   ├── streamable-http.ts   # Primary transport
+│   │   │   │   ├── stdio.ts             # Local/Claude Code
+│   │   │   │   └── sse.ts               # Legacy compatibility
+│   │   │   ├── 🛠️ tools/           # MCP tool definitions
+│   │   │   │   ├── search-knowledge.ts  # Vector search tool
+│   │   │   │   ├── manage-projects.ts   # Project management
+│   │   │   │   ├── process-documents.ts # Document processing
+│   │   │   │   └── real-time-collab.ts  # Collaboration tools
+│   │   │   └── 📊 middleware/      # Request processing
+│   │   ├── 🧠 engine/              # Knowledge Engine
+│   │   │   ├── 📄 server.ts        # Hyper Express server
 │   │   │   ├── 🔧 services/        # Business logic layer
-│   │   │   │   ├── rag/            # RAG services
-│   │   │   │   │   ├── crawling_service.py     # Web crawling
-│   │   │   │   │   ├── document_storage_service.py # Document processing
-│   │   │   │   │   ├── search_service.py       # Vector search & reranking
-│   │   │   │   │   └── source_management_service.py # Source metadata
+│   │   │   │   ├── rag/            # RAG pipeline services
+│   │   │   │   │   ├── hybrid-search.ts    # Dense + BM25 search
+│   │   │   │   │   ├── document-processor.ts # Document ingestion
+│   │   │   │   │   ├── embedding-service.ts  # BGE/Jina embedding client
+│   │   │   │   │   ├── vector-store.ts      # Qdrant operations
+│   │   │   │   │   └── reranker.ts          # MMR and ML reranking
 │   │   │   │   ├── projects/       # Project management
-│   │   │   │   │   ├── project_service.py      # Core operations
-│   │   │   │   │   ├── task_service.py         # Task management
-│   │   │   │   │   └── document_service.py     # Document operations
-│   │   │   │   ├── storage/        # Storage operations
-│   │   │   │   │   ├── document_storage_service.py # Parallel processing
-│   │   │   │   │   └── code_storage_service.py     # Code extraction
-│   │   │   │   ├── search/         # Search operations
-│   │   │   │   │   └── vector_search_service.py    # Similarity search
-│   │   │   │   ├── client_manager.py       # Database client management
-│   │   │   │   ├── credential_service.py   # Credential management
-│   │   │   │   ├── threading_service.py    # Thread pool & rate limiting
-│   │   │   │   ├── mcp_service_client.py   # MCP HTTP client
-│   │   │   │   ├── mcp_session_manager.py  # MCP session handling
-│   │   │   │   └── prompt_service.py       # Prompt management
-│   │   │   └── 📊 models/          # Data models
-│   │   ├── 🔌 mcp/                 # MCP server implementation
-│   │   │   ├── 📄 mcp_server.py    # MCP protocol server
-│   │   │   └── 🛠️ modules/          # MCP tool definitions
-│   │   ├── 🤖 agents/              # AI agent services
-│   │   │   ├── 📄 main.py          # Agents service entry
-│   │   │   ├── 📑 document_agent.py # Document Q&A agent
-│   │   │   ├── 📋 project_agent.py  # Project management agent
-│   │   │   └── 💬 chat_service.py   # Chat handling service
-│   │   └── 🗄️ migration/           # Database migrations
-│   └── 🧪 tests/                   # Comprehensive test suite
-│       ├── 🔧 test_services/       # Service layer tests
-│       ├── 🌐 test_api/            # API endpoint tests
-│       ├── 🔌 test_mcp/            # MCP functionality tests
-│       └── 🤖 test_agents/         # AI agent tests
+│   │   │   │   │   ├── project-service.ts   # Core operations
+│   │   │   │   │   ├── task-service.ts      # Task management
+│   │   │   │   │   └── collaboration.ts     # Real-time sync
+│   │   │   │   ├── cache/          # Caching strategies
+│   │   │   │   │   ├── redis-cache.ts       # Hot query caches
+│   │   │   │   │   ├── vector-cache.ts      # Vector result caching
+│   │   │   │   │   └── session-cache.ts     # User session state
+│   │   │   │   └── monitoring/     # Observability
+│   │   │   │       ├── metrics.ts          # Prometheus metrics
+│   │   │   │       ├── tracing.ts          # OpenTelemetry
+│   │   │   │       └── health-checks.ts    # Service health
+│   │   │   └── 📊 models/          # TypeScript data models
+│   │   ├── 🤖 embeddings/          # Self-hosted Embedding Service
+│   │   │   ├── 📄 server.ts        # TEI/vLLM client wrapper
+│   │   │   ├── 🔧 providers/       # Embedding model providers
+│   │   │   │   ├── bge-large.ts    # BGE-Large v1.5 (primary)
+│   │   │   │   ├── jina-v2.ts      # Jina embeddings v2
+│   │   │   │   ├── openai.ts       # OpenAI fallback
+│   │   │   │   └── cohere.ts       # Cohere fallback
+│   │   │   ├── 📊 batching/        # Efficient batch processing
+│   │   │   │   ├── adaptive-batcher.ts # Dynamic batch sizing
+│   │   │   │   ├── queue-manager.ts    # Request queuing
+│   │   │   │   └── backpressure.ts     # Load balancing
+│   │   │   └── 🔄 scaling/         # Auto-scaling logic
+│   │   │       ├── tei-scaler.ts   # TEI instance management
+│   │   │       └── vllm-scaler.ts  # vLLM cluster scaling
+│   │   └── 🧪 tests/               # Comprehensive test suite
+│   │       ├── 🔧 unit/            # Unit tests (Jest/Vitest)
+│   │       ├── 🌐 integration/     # Integration tests
+│   │       ├── 🔌 mcp/             # MCP protocol tests
+│   │       ├── ⚡ performance/     # Load and performance tests
+│   │       └── 🎭 e2e/             # End-to-end tests
 │
 ├── 🎨 archon-ui-main/              # Frontend application (React 18.3)
 │   ├── 📄 package.json             # Node.js dependencies
-│   ├── 📄 package-lock.json        # Dependency lock file
+│   ├── 📄 next.config.js           # Next.js 14 configuration
 │   ├── 🐳 Dockerfile               # Frontend container
-│   ├── ⚙️ vite.config.ts           # Vite configuration
-│   ├── ⚙️ tsconfig.json            # TypeScript configuration
 │   ├── ⚙️ tailwind.config.js       # TailwindCSS configuration
 │   ├── 📁 src/                     # Source code
-│   │   ├── 📄 App.tsx              # Main application component
-│   │   ├── 📄 main.tsx             # React entry point
+│   │   ├── 📄 app/                 # Next.js 14 App Router
+│   │   │   ├── layout.tsx          # Root layout
+│   │   │   ├── page.tsx            # Home page
+│   │   │   ├── knowledge/          # Knowledge management pages
+│   │   │   ├── projects/           # Project management pages
+│   │   │   ├── mcp/                # MCP server control pages
+│   │   │   └── settings/           # Configuration pages
 │   │   ├── 🎨 components/          # React components
-│   │   │   ├── ui/                 # Base UI components
-│   │   │   ├── layouts/            # Layout components
-│   │   │   ├── mcp/                # MCP-related components
-│   │   │   ├── settings/           # Configuration components
-│   │   │   ├── project-tasks/      # Project management UI
-│   │   │   ├── knowledge-base/     # Knowledge management UI
-│   │   │   └── animations/         # Animation components
-│   │   ├── 📑 pages/               # Page components
-│   │   │   ├── HomePage.tsx        # Knowledge base dashboard
-│   │   │   ├── ProjectsPage.tsx    # Project management
-│   │   │   ├── SettingsPage.tsx    # Configuration interface
-│   │   │   ├── McpPage.tsx         # MCP server control
-│   │   │   └── AgentChatPage.tsx   # AI agent interface
+│   │   │   ├── ui/                 # shadcn/ui components
+│   │   │   ├── knowledge/          # Knowledge management UI
+│   │   │   ├── projects/           # Project management UI
+│   │   │   ├── mcp/                # MCP server monitoring
+│   │   │   ├── real-time/          # WebSocket components
+│   │   │   └── virtualized/        # Performance-optimized lists
 │   │   ├── 🔧 services/            # API service layer
-│   │   │   ├── api.ts              # HTTP client configuration
-│   │   │   ├── knowledgeService.ts # Knowledge API calls
-│   │   │   ├── projectService.ts   # Project API calls
-│   │   │   ├── mcpService.ts       # MCP API calls
-│   │   │   ├── settingsService.ts  # Settings API calls
-│   │   │   └── socketService.ts    # Socket.IO client
+│   │   │   ├── api-client.ts       # HTTP client (Hyper Express)
+│   │   │   ├── websocket-client.ts # Real-time communication
+│   │   │   ├── knowledge-service.ts # Knowledge API calls
+│   │   │   ├── project-service.ts  # Project API calls
+│   │   │   └── mcp-service.ts      # MCP monitoring calls
 │   │   ├── 🎣 hooks/               # Custom React hooks
-│   │   │   ├── useSocket.ts        # Socket.IO hook
-│   │   │   └── useApi.ts           # API integration hook
-│   │   ├── 🗂️ contexts/            # React contexts
-│   │   │   ├── SocketContext.tsx   # Socket.IO context
-│   │   │   ├── SettingsContext.tsx # Configuration context
-│   │   │   └── ProjectContext.tsx  # Project state context
-│   │   ├── 📚 lib/                 # Utility libraries
-│   │   │   ├── utils.ts            # Helper functions
-│   │   │   └── constants.ts        # Application constants
-│   │   └── 🎨 styles/              # CSS styles
-│   └── 🧪 test/                    # Frontend test suite
-│       ├── ⚙️ setup.ts             # Test configuration
-│       ├── 🎨 components/          # Component tests (68 files)
-│       ├── 🔧 services/            # Service tests (12 files)
-│       ├── 📑 pages/               # Page tests (5 files)
-│       ├── 🎣 hooks/               # Hook tests (2 files)
-│       ├── 🗂️ contexts/            # Context tests (3 files)
-│       ├── 🔗 integration/         # Integration tests (8 files)
-│       ├── 🎭 e2e/                 # End-to-end tests (5 files)
-│       └── ⚡ performance/         # Performance tests (3 files)
+│   │   │   ├── use-websocket.ts    # WebSocket hook
+│   │   │   ├── use-virtual-list.ts # Virtualization hook
+│   │   │   └── use-real-time.ts    # Real-time sync hook
+│   │   ├── 🗂️ store/               # State management (Zustand)
+│   │   │   ├── knowledge-store.ts  # Knowledge state
+│   │   │   ├── project-store.ts    # Project state
+│   │   │   └── session-store.ts    # Session state
+│   │   └── 🎨 styles/              # Global styles
+│   └── 🧪 __tests__/               # Frontend test suite
+│       ├── 🎨 components/          # Component tests (React Testing Library)
+│       ├── 🔧 services/            # Service tests
+│       ├── 🎣 hooks/               # Hook tests
+│       ├── 🎭 e2e/                 # End-to-end tests (Playwright)
+│       └── ⚡ performance/         # Performance tests
+│
+├── 🤖 embeddings/                  # Self-hosted Embedding Infrastructure
+│   ├── 📁 tei/                     # Text Embeddings Inference
+│   │   ├── 🐳 Dockerfile           # TEI container
+│   │   ├── ⚙️ config.toml          # TEI configuration
+│   │   └── 📊 models/              # Model configurations
+│   ├── 📁 vllm/                    # vLLM serving
+│   │   ├── 🐳 Dockerfile           # vLLM container
+│   │   ├── ⚙️ config.yaml          # vLLM configuration
+│   │   └── 📊 models/              # Model serving configs
+│   └── 📁 monitoring/              # Embedding service monitoring
+│       ├── prometheus.yml          # Metrics collection
+│       └── grafana-dashboard.json  # Performance dashboards
+│
+├── 🗄️ infrastructure/              # Infrastructure as Code
+│   ├── 📁 helm/                    # Helm charts
+│   │   ├── archon-mcp/             # MCP server chart
+│   │   ├── archon-engine/          # Knowledge engine chart
+│   │   ├── archon-embeddings/      # Embeddings service chart
+│   │   ├── qdrant/                 # Qdrant vector database
+│   │   ├── mongodb/                # MongoDB metadata store
+│   │   └── redis/                  # Redis cache and streams
+│   ├── 📁 terraform/               # Infrastructure provisioning
+│   │   ├── aws/                    # AWS EKS cluster
+│   │   ├── gcp/                    # GKE cluster
+│   │   └── azure/                  # AKS cluster
+│   └── 📁 monitoring/              # Observability stack
+│       ├── prometheus/             # Metrics collection
+│       ├── grafana/                # Dashboards and visualization
+│       ├── loki/                   # Log aggregation
+│       └── tempo/                  # Distributed tracing
 │
 └── 📖 docs/                        # Documentation site (Docusaurus)
     ├── 📄 package.json             # Documentation dependencies
@@ -587,13 +743,12 @@ ARCHONRELOADED/
     ├── 📁 docs/                    # Documentation content
     │   ├── getting-started.mdx     # Quick start guide
     │   ├── architecture.mdx        # System architecture
-    │   ├── server-overview.mdx     # Server documentation
-    │   ├── mcp-overview.mdx        # MCP integration guide
-    │   ├── ui.mdx                  # Frontend documentation
-    │   ├── configuration.mdx       # Configuration guide
-    │   ├── api-reference.mdx       # API documentation
-    │   ├── testing.mdx             # Testing guide
-    │   └── deployment.mdx          # Deployment guide
+    │   ├── mcp-integration.mdx     # MCP protocol guide
+    │   ├── embedding-setup.mdx     # Self-hosted embeddings
+    │   ├── kubernetes-deploy.mdx   # K8s deployment guide
+    │   ├── performance-tuning.mdx  # Performance optimization
+    │   ├── observability.mdx       # Monitoring and alerting
+    │   └── api-reference.mdx       # Complete API documentation
     └── 📁 src/                     # Documentation source
         ├── 📁 components/          # Custom documentation components
         ├── 📁 css/                 # Documentation styles
@@ -617,156 +772,190 @@ ARCHONRELOADED/
 
 ### Development Environment Setup
 
-#### Backend Development (Python)
+#### Backend Development (Node.js + TypeScript)
 
 ```bash
-# Navigate to Python directory
-cd python
-
-# Install uv package manager
-pip install uv
-
-# Install dependencies
-uv sync --all-extras
-
-# Activate virtual environment
-source .venv/bin/activate  # Unix
-# or
-.venv\Scripts\activate     # Windows
-
-# Run development server with hot reload
-uv run uvicorn src.main:socket_app --host 0.0.0.0 --port 8080 --reload
-```
-
-#### Frontend Development (React)
-
-```bash
-# Navigate to frontend directory
-cd archon-ui-main
+# Navigate to Node.js directory
+cd nodejs
 
 # Install dependencies
 npm install
+# or
+yarn install
 
-# Start development server with hot reload
-npm run dev
+# Development with hot reload
+npm run dev:mcp          # MCP server with Hyper Express
+npm run dev:engine       # Knowledge engine
+npm run dev:embeddings   # Embedding service
 
-# Build for production
-npm run build
+# Type checking
+npm run type-check
 
-# Run tests
-npm test
+# Linting and formatting
+npm run lint
+npm run format
 ```
 
-#### MCP Development
+#### Cloud-Native Development
 
 ```bash
-# Test MCP server independently
-cd python
-uv run python src/mcp_server.py
+# Local Kubernetes development with Skaffold
+skaffold dev --port-forward
 
-# Test MCP tools
-echo '{"method": "tools/call", "params": {"name": "search_knowledge", "arguments": {"query": "test"}}}' | \
-  uv run python -m src.mcp_server
+# Helm chart development
+helm template archon-mcp k8s/helm/archon-mcp --values k8s/helm/archon-mcp/values-dev.yaml
+
+# Deploy to local cluster
+kubectl apply -k k8s/overlays/development
+```
+
+#### Observability Development
+
+```bash
+# Start observability stack
+docker-compose -f docker-compose.observability.yml up -d
+
+# Generate sample telemetry
+npm run load-test
+
+# View metrics: http://localhost:3000 (Grafana)
+# View traces: http://localhost:16686 (Jaeger)
+# View logs: http://localhost:3100 (Loki)
 ```
 
 ### Testing Strategy
 
-#### Backend Testing (Python)
+#### Backend Testing (Node.js + TypeScript)
 
 ```bash
-# Run all tests
-cd python && uv run pytest
-
-# Run specific test categories
-uv run pytest tests/test_services/     # Service layer tests
-uv run pytest tests/test_api/          # API endpoint tests
-uv run pytest tests/test_mcp/          # MCP functionality tests
-uv run pytest tests/test_agents/       # AI agent tests
-
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
-```
-
-#### Frontend Testing (Vitest)
-
-```bash
-# Run all tests
-cd archon-ui-main && npm test
-
-# Run with coverage
+# Unit tests with Jest
+npm test
+npm run test:watch
 npm run test:coverage
 
-# Run specific test suites
-npm test components/        # Component tests
-npm test services/          # Service tests
-npm test integration/       # Integration tests
-npm test e2e/              # End-to-end tests
+# Integration tests with test containers
+npm run test:integration
+
+# MCP protocol tests
+npm run test:mcp
+
+# Performance tests
+npm run test:performance
+npm run load-test
+
+# E2E tests with Playwright
+npm run test:e2e
 ```
 
-#### Integration Testing
+#### Observability Testing
 
 ```bash
-# Start all services
-docker-compose up -d
+# Golden Signals validation
+npm run test:golden-signals
 
-# Health checks
-curl http://localhost:8080/health      # Server API
-curl http://localhost:8051/sse         # MCP Server
-curl http://localhost:8052/health      # Agents Service
-curl http://localhost:3737             # Frontend UI
+# SLO compliance testing
+npm run test:slos
 
-# Test MCP integration
-curl -X POST http://localhost:8051/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{"name": "search_knowledge", "arguments": {"query": "deployment"}}'
+# Chaos engineering tests
+npm run test:chaos
 ```
 
-### Code Style & Standards
+### Performance Profiling
 
-#### Python Code Standards
+#### Node.js Performance Analysis
 
-```python
-# Service Pattern Example
-class KnowledgeService:
-    def __init__(self, supabase_client=None):
-        self.supabase_client = supabase_client or get_supabase_client()
-    
-    async def search_knowledge(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search knowledge base using vector similarity."""
-        try:
-            # Async operations with proper error handling
-            embedding = await self.get_embedding(query)
-            results = await self.vector_search(embedding, limit)
-            return {"success": True, "data": results}
-        except Exception as e:
-            logger.error(f"Knowledge search failed: {e}")
-            return {"success": False, "error": str(e)}
+```bash
+# CPU profiling
+node --prof nodejs/src/index.ts
+node --prof-process isolate-*.log > profile.txt
+
+# Memory profiling
+node --inspect nodejs/src/index.ts
+# Connect to chrome://inspect
+
+# Event loop monitoring
+npm run monitor:event-loop
+
+# Custom metrics collection
+npm run collect:metrics
 ```
 
-#### TypeScript Code Standards
+#### Vector Database Optimization
+
+```bash
+# Qdrant performance tuning
+npm run tune:qdrant-hnsw
+npm run benchmark:vector-search
+
+# Embedding batch optimization
+npm run optimize:embedding-batches
+
+# Cache warming
+npm run warm:caches
+```
+
+### Code Quality Standards
+
+#### TypeScript Best Practices
 
 ```typescript
-// Service Pattern Example
-export class KnowledgeService {
-  private apiClient: ApiClient;
-  
-  constructor(apiClient: ApiClient) {
-    this.apiClient = apiClient;
-  }
-  
-  async searchKnowledge(query: string, limit: number = 10): Promise<ApiResponse<KnowledgeItem[]>> {
-    try {
-      const response = await this.apiClient.post('/api/knowledge/search', {
-        query,
-        limit
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Knowledge search failed:', error);
-      throw new ApiError('Failed to search knowledge base', error);
-    }
+// Hyper Express Route Pattern
+import { HyperRequest, HyperResponse } from 'hyper-express';
+import { z } from 'zod';
+
+const SearchRequestSchema = z.object({
+  query: z.string().min(1).max(1000),
+  limit: z.number().int().min(1).max(100).default(10),
+  filters: z.record(z.any()).optional()
+});
+
+export async function searchKnowledge(req: HyperRequest, res: HyperResponse) {
+  try {
+    const params = SearchRequestSchema.parse(req.body);
+    
+    // Golden signals tracking
+    const startTime = Date.now();
+    req.metrics?.requestsTotal.inc({ method: 'search_knowledge' });
+    
+    const results = await vectorSearch.hybridSearch(params);
+    
+    // Latency tracking (p95 target: <350ms)
+    const latency = Date.now() - startTime;
+    req.metrics?.requestDuration.observe({ method: 'search_knowledge' }, latency);
+    
+    res.json({ results, latency_ms: latency });
+  } catch (error) {
+    req.metrics?.errorsTotal.inc({ method: 'search_knowledge' });
+    res.status(500).json({ error: error.message });
   }
 }
+```
+
+#### OpenTelemetry Integration
+
+```typescript
+// Instrumentation setup
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { PerformanceObserver } from 'perf_hooks';
+
+const sdk = new NodeSDK({
+  instrumentations: [getNodeAutoInstrumentations()],
+  serviceName: 'archon-mcp',
+  serviceVersion: '2.0.0'
+});
+
+// Event loop monitoring
+const obs = new PerformanceObserver((list) => {
+  const entries = list.getEntries();
+  entries.forEach((entry) => {
+    // Track event loop lag for performance monitoring
+    metrics.eventLoopLag.set(entry.duration);
+  });
+});
+obs.observe({ entryTypes: ['measure'] });
+
+sdk.start();
 ```
 
 ### Build & Deployment
@@ -801,418 +990,775 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ## 🔧 API Reference
 
-### REST API Endpoints
+### High-Performance REST API (Hyper Express)
+
+ARCHON's API is built on Hyper Express for maximum throughput and minimal latency, optimized for real-time AI interactions.
 
 #### Knowledge Management API
 
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `GET` | `/api/knowledge-items` | List all knowledge items | - | `{ items: KnowledgeItem[] }` |
-| `POST` | `/api/knowledge-items` | Create knowledge item | `{ title, content, type }` | `{ item: KnowledgeItem }` |
-| `PUT` | `/api/knowledge-items/{id}` | Update knowledge item | `{ title?, content?, type? }` | `{ item: KnowledgeItem }` |
-| `DELETE` | `/api/knowledge-items/{id}` | Delete knowledge item | - | `{ success: boolean }` |
-| `POST` | `/api/knowledge-items/upload` | Upload document | FormData | `{ item: KnowledgeItem }` |
+| Method | Endpoint | Description | SLO Target | Response |
+|--------|----------|-------------|------------|----------|
+| `POST` | `/api/search` | Hybrid vector + BM25 search | p95 < 350ms | `{ results: SearchResult[], latency_ms: number }` |
+| `POST` | `/api/search/dense` | Pure vector similarity search | p95 < 200ms | `{ results: VectorResult[], latency_ms: number }` |
+| `POST` | `/api/knowledge/ingest` | Process document for indexing | TTFI < 30s | `{ job_id: string, status: 'processing' }` |
+| `GET` | `/api/knowledge/status/:job_id` | Check ingestion status | p95 < 50ms | `{ status: string, progress: number }` |
+| `POST` | `/api/embeddings/batch` | Generate embeddings batch | p95 < 500ms | `{ embeddings: number[][], model: string }` |
 
-#### Project Management API
+#### MCP Protocol Endpoints
 
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `GET` | `/api/projects` | List all projects | - | `{ projects: Project[] }` |
-| `POST` | `/api/projects` | Create project | `{ name, description }` | `{ project: Project }` |
-| `GET` | `/api/projects/{id}` | Get project details | - | `{ project: Project }` |
-| `POST` | `/api/projects/{id}/tasks` | Add task to project | `{ title, description, priority }` | `{ task: Task }` |
-| `PUT` | `/api/projects/{id}/tasks/{task_id}` | Update task | `{ status?, priority? }` | `{ task: Task }` |
+| Method | Endpoint | Description | Transport | Performance |
+|--------|----------|-------------|-----------|-------------|
+| `POST` | `/mcp/stream` | **Primary** - Streamable HTTP | Bidirectional streaming | ≥250 concurrent sessions |
+| `POST` | `/mcp/rpc` | JSON-RPC 2.0 over HTTP | Request/response | p95 < 100ms |
+| `GET` | `/mcp/sse` | **Legacy** - Server-Sent Events | Unidirectional streaming | Deprecation planned |
 
-#### RAG Search API
+#### Real-time Collaboration API
 
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `POST` | `/api/rag/query` | Search knowledge base | `{ query, match_count, filters? }` | `{ results: SearchResult[] }` |
-| `POST` | `/api/rag/ask` | AI-powered Q&A | `{ question, context? }` | `{ answer: string, sources: Source[] }` |
-
-#### Source Management API
-
-| Method | Endpoint | Description | Request Body | Response |
-|--------|----------|-------------|--------------|----------|
-| `GET` | `/api/sources` | List all sources | - | `{ sources: Source[] }` |
-| `POST` | `/api/sources` | Add source for crawling | `{ url, type }` | `{ source: Source }` |
-| `POST` | `/api/sources/{id}/crawl` | Start crawling source | - | `{ crawl_id: string }` |
-| `DELETE` | `/api/sources/{id}` | Delete source | - | `{ success: boolean }` |
+| Method | Endpoint | Description | Protocol | Use Case |
+|--------|----------|-------------|----------|----------|
+| `WS` | `/ws/collaborate` | Live document sync | WebSocket | Real-time editing |
+| `WS` | `/ws/sessions` | Agent session management | WebSocket | Multi-user coordination |
+| `POST` | `/api/sync/conflict` | Conflict resolution | HTTP | OT/CRDT operations |
 
 ### MCP Tools Reference
 
-ARCHON provides comprehensive MCP tools for AI coding assistants:
+ARCHON provides comprehensive MCP tools optimized for AI coding assistants:
 
 #### Knowledge Tools
 
 ```typescript
-// Search knowledge base
-search_knowledge(query: string, limit?: number): SearchResult[]
+// Hybrid search with performance tracking
+search_knowledge(
+  query: string,
+  options?: {
+    mode?: 'hybrid' | 'dense' | 'sparse',
+    limit?: number,          // default: 10, max: 100
+    threshold?: number,      // similarity threshold 0-1
+    filters?: Record<string, any>
+  }
+): Promise<{
+  results: SearchResult[],
+  latency_ms: number,
+  mode: string,
+  total_found: number
+}>
 
-// Get knowledge item details
-get_knowledge_item(id: string): KnowledgeItem
+// Document ingestion with progress tracking
+ingest_document(
+  content: string | File,
+  metadata: {
+    title: string,
+    source_type: 'upload' | 'crawl' | 'api',
+    tags?: string[]
+  }
+): Promise<{
+  job_id: string,
+  estimated_completion: string,
+  chunk_count: number
+}>
 
-// Add knowledge from text
-add_knowledge(title: string, content: string, type?: string): KnowledgeItem
+// Real-time search suggestions
+suggest_queries(
+  partial_query: string,
+  context?: string[]
+): Promise<{
+  suggestions: string[],
+  confidence_scores: number[]
+}>
 ```
 
-#### Project Tools
+#### Project & Collaboration Tools
 
 ```typescript
-// List projects
-list_projects(): Project[]
+// Create collaborative workspace
+create_workspace(
+  name: string,
+  config: {
+    real_time_sync: boolean,
+    max_participants: number,
+    conflict_resolution: 'ot' | 'crdt' | 'manual'
+  }
+): Promise<{
+  workspace_id: string,
+  join_url: string,
+  session_token: string
+}>
 
-// Create project
-create_project(name: string, description: string): Project
-
-// Add task to project
-add_task(project_id: string, title: string, description?: string): Task
-
-// Update task status
-update_task_status(task_id: string, status: string): Task
+// Live document synchronization
+sync_document(
+  document_id: string,
+  operations: Operation[],
+  session_id: string
+): Promise<{
+  applied_ops: Operation[],
+  conflicts: Conflict[],
+  document_version: number
+}>
 ```
 
-#### Document Tools
+### Performance Monitoring Endpoints
+
+#### Golden Signals API
 
 ```typescript
-// Process uploaded document
-process_document(file_path: string, title?: string): KnowledgeItem
+// SLO compliance monitoring
+GET /api/metrics/slos
+Response: {
+  search_latency: {
+    p95_ms: number,
+    target_ms: 350,
+    compliance_percentage: number
+  },
+  availability: {
+    uptime_percentage: number,
+    target_percentage: 99.9,
+    error_budget_remaining: number
+  },
+  throughput: {
+    concurrent_sessions: number,
+    target_sessions: 250,
+    utilization_percentage: number
+  }
+}
 
-// Extract code examples
-extract_code(content: string, language?: string): CodeExample[]
+// Real-time performance metrics
+GET /api/metrics/realtime
+Response: {
+  event_loop_lag_ms: number,
+  memory_usage_mb: number,
+  active_connections: number,
+  queue_depth: number,
+  cache_hit_ratio: number
+}
 ```
 
-### Socket.IO Events
+### WebSocket Events (Real-time Communication)
 
-ARCHON uses Socket.IO for real-time updates:
+ARCHON uses native WebSocket connections via Hyper Express for optimal real-time performance:
 
 #### Client Events (Frontend → Server)
 
 ```typescript
-// Join specific room for updates
-socket.emit('join_room', { room: 'projects' });
+// Join collaboration session
+socket.emit('join_session', {
+  session_id: string,
+  user_id: string,
+  capabilities: string[]
+});
 
-// Request progress updates
-socket.emit('subscribe_crawl_progress', { source_id: 'uuid' });
+// Live document editing
+socket.emit('document_operation', {
+  document_id: string,
+  operation: {
+    type: 'insert' | 'delete' | 'retain',
+    position: number,
+    content?: string,
+    length?: number
+  },
+  session_id: string
+});
+
+// Real-time search as you type
+socket.emit('live_search', {
+  query: string,
+  context_id: string,
+  debounce_ms: 300
+});
 ```
 
 #### Server Events (Server → Frontend)
 
 ```typescript
-// Knowledge base updates
-socket.on('knowledge_item_created', (item: KnowledgeItem) => {});
-socket.on('knowledge_item_updated', (item: KnowledgeItem) => {});
-socket.on('knowledge_item_deleted', (id: string) => {});
+// Search results streaming
+socket.on('search_results_chunk', (data: {
+  query_id: string,
+  results: SearchResult[],
+  is_final: boolean,
+  latency_ms: number
+}) => {});
 
-// Project updates
-socket.on('project_created', (project: Project) => {});
-socket.on('task_updated', (task: Task) => {});
+// Document synchronization
+socket.on('document_synced', (data: {
+  document_id: string,
+  operations: Operation[],
+  conflicts: Conflict[],
+  author_id: string
+}) => {});
 
-// Crawling progress
-socket.on('crawl_progress', (progress: CrawlProgress) => {});
-socket.on('crawl_completed', (result: CrawlResult) => {});
+// Performance alerts
+socket.on('performance_alert', (data: {
+  metric: string,
+  current_value: number,
+  threshold: number,
+  severity: 'warning' | 'critical'
+}) => {});
 
-// AI agent responses
-socket.on('agent_response_chunk', (chunk: string) => {});
-socket.on('agent_response_complete', (response: AgentResponse) => {});
+// Embedding service status
+socket.on('embedding_service_status', (data: {
+  service: 'tei' | 'vllm',
+  status: 'healthy' | 'degraded' | 'down',
+  queue_depth: number,
+  response_time_ms: number
+}) => {});
+```
+
+### Error Handling & Status Codes
+
+#### HTTP Status Codes
+
+| Code | Meaning | Usage |
+|------|---------|-------|
+| `200` | Success | Request completed successfully |
+| `202` | Accepted | Async operation started (e.g., document ingestion) |
+| `400` | Bad Request | Invalid parameters or malformed request |
+| `429` | Rate Limited | Exceeded concurrent session limit (250/shard) |
+| `503` | Service Unavailable | Embedding service overloaded |
+| `504` | Gateway Timeout | Search exceeded SLO thresholds |
+
+#### Error Response Format
+
+```typescript
+{
+  error: {
+    code: string,
+    message: string,
+    details?: any,
+    trace_id?: string,
+    timestamp: string,
+    suggested_retry_after_ms?: number
+  }
+}
 ```
 
 ---
 
-## 🚀 Deployment Guide
+## 🚀 Cloud-Native Deployment Guide
 
-### Production Deployment
+### Kubernetes-Native Architecture (Recommended)
 
-#### Environment Configuration
+ARCHON is designed as a **cloud-native application** with Kubernetes as the primary deployment target, optimized for high availability, auto-scaling, and observability.
 
-```bash
-# Production environment variables
-ENVIRONMENT=production
-DEBUG=false
-
-# Database - Use production Supabase instance
-SUPABASE_URL=https://your-prod-project.supabase.co
-SUPABASE_SERVICE_KEY=your_production_service_key
-
-# AI Services - Production API keys
-OPENAI_API_KEY=sk-prod-...
-GOOGLE_API_KEY=your_prod_google_key
-
-# Logging - Enable production logging
-LOGFIRE_ENABLED=true
-LOGFIRE_TOKEN=your_production_logfire_token
-
-# Security
-JWT_SECRET=your_secure_jwt_secret
-CORS_ORIGINS=https://your-domain.com,https://app.your-domain.com
-
-# Performance
-WORKER_PROCESSES=4
-MAX_CONNECTIONS=1000
-CACHE_TTL=3600
-```
-
-#### Docker Production Setup
-
-<details>
-<summary><strong>🐳 Production Docker Configuration</strong></summary>
+#### Cluster Requirements
 
 ```yaml
-# docker-compose.prod.yml
-version: '3.8'
-
-services:
-  archon-server:
-    build:
-      context: ./python
-      dockerfile: Dockerfile.server
-      target: production
-    environment:
-      - ENVIRONMENT=production
-      - WORKER_PROCESSES=4
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  archon-mcp:
-    build:
-      context: ./python
-      dockerfile: Dockerfile.mcp
-      target: production
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8051/sse"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  archon-agents:
-    build:
-      context: ./python
-      dockerfile: Dockerfile.agents
-      target: production
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8052/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  archon-frontend:
-    build:
-      context: ./archon-ui-main
-      dockerfile: Dockerfile
-      target: production
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - archon-server
-      - archon-frontend
-    restart: unless-stopped
-
-networks:
-  app-network:
-    driver: bridge
-```
-
-</details>
-
-#### Kubernetes Deployment
-
-<details>
-<summary><strong>☸️ Kubernetes Configuration</strong></summary>
-
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: archon
-
----
-# k8s/configmap.yaml
+# Minimum cluster specifications
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: archon-config
-  namespace: archon
+  name: cluster-requirements
 data:
-  ENVIRONMENT: "production"
-  ARCHON_SERVER_PORT: "8080"
-  ARCHON_MCP_PORT: "8051"
-  ARCHON_AGENTS_PORT: "8052"
+  kubernetes_version: ">=1.25"
+  node_pools: |
+    general:
+      instance_type: "n1-standard-4"  # 4 vCPU, 15GB RAM
+      min_nodes: 3
+      max_nodes: 20
+      disk_type: "pd-ssd"
+      disk_size: "100GB"
+    
+    storage_optimized:  # For Qdrant
+      instance_type: "n1-highmem-8"  # 8 vCPU, 52GB RAM
+      min_nodes: 1
+      max_nodes: 5
+      disk_type: "local-nvme"
+      disk_size: "375GB"
+      
+  networking:
+    cni: "calico"  # or compatible
+    service_mesh: "istio"  # optional
+    ingress_controller: "nginx"
+```
 
----
-# k8s/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: archon-secrets
-  namespace: archon
-type: Opaque
-stringData:
-  SUPABASE_URL: "https://your-project.supabase.co"
-  SUPABASE_SERVICE_KEY: "your_service_key"
-  OPENAI_API_KEY: "sk-your_openai_key"
+#### Resource Allocation Strategy
 
----
-# k8s/deployment-server.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: archon-server
-  namespace: archon
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: archon-server
-  template:
-    metadata:
-      labels:
-        app: archon-server
-    spec:
-      containers:
-      - name: archon-server
-        image: archon/server:latest
-        ports:
-        - containerPort: 8080
-        envFrom:
-        - configMapRef:
-            name: archon-config
-        - secretRef:
-            name: archon-secrets
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
+| Service | CPU Request | CPU Limit | Memory Request | Memory Limit | Storage |
+|---------|-------------|-----------|----------------|--------------|---------|
+| **MCP Server** | 300m | 1000m | 512Mi | 2Gi | 10Gi |
+| **Knowledge Engine** | 500m | 2000m | 1Gi | 4Gi | 20Gi |
+| **Qdrant Vector DB** | 2000m | 8000m | 8Gi | 32Gi | 100Gi NVMe |
+| **TEI Embeddings** | 1000m | 4000m | 4Gi | 16Gi | 50Gi |
+| **MongoDB** | 500m | 2000m | 2Gi | 8Gi | 100Gi |
+| **Redis** | 200m | 1000m | 512Mi | 2Gi | 20Gi |
 
----
-# k8s/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: archon-server-service
-  namespace: archon
-spec:
-  selector:
-    app: archon-server
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
-  type: ClusterIP
+### Production Deployment Workflow
 
----
-# k8s/ingress.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: archon-ingress
-  namespace: archon
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  tls:
-  - hosts:
-    - archon.yourdomain.com
-    secretName: archon-tls
-  rules:
-  - host: archon.yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: archon-frontend-service
-            port:
-              number: 3737
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: archon-server-service
-            port:
-              number: 8080
+#### 1. Infrastructure Provisioning
+
+<details>
+<summary><strong>🏗️ Terraform Infrastructure Setup</strong></summary>
+
+```hcl
+# infrastructure/terraform/gke/main.tf
+resource "google_container_cluster" "archon_cluster" {
+  name     = "archon-production"
+  location = var.region
+  
+  # Node pools defined separately
+  remove_default_node_pool = true
+  initial_node_count       = 1
+  
+  # Network configuration for high performance
+  network_config {
+    enable_private_nodes   = true
+    enable_private_endpoint = false
+    master_ipv4_cidr_block = "172.16.0.0/28"
+  }
+  
+  # Observability
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+  }
+  
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+  }
+}
+
+# General application node pool
+resource "google_container_node_pool" "general_nodes" {
+  cluster    = google_container_cluster.archon_cluster.name
+  location   = google_container_cluster.archon_cluster.location
+  name       = "general-pool"
+  
+  autoscaling {
+    min_node_count = 3
+    max_node_count = 20
+  }
+  
+  node_config {
+    machine_type = "n1-standard-4"
+    disk_type    = "pd-ssd"
+    disk_size_gb = 100
+    
+    labels = {
+      "archon.io/node-type" = "general"
+    }
+    
+    taint {
+      key    = "archon.io/general"
+      value  = "true"
+      effect = "NO_SCHEDULE"
+    }
+  }
+}
+
+# Storage-optimized node pool for Qdrant
+resource "google_container_node_pool" "storage_nodes" {
+  cluster    = google_container_cluster.archon_cluster.name
+  location   = google_container_cluster.archon_cluster.location
+  name       = "storage-pool"
+  
+  autoscaling {
+    min_node_count = 1
+    max_node_count = 5
+  }
+  
+  node_config {
+    machine_type    = "n1-highmem-8"
+    local_ssd_count = 1  # NVMe for vector operations
+    
+    labels = {
+      "archon.io/node-type" = "storage"
+      "storage-type"        = "nvme"
+    }
+    
+    taint {
+      key    = "archon.io/storage"
+      value  = "true"
+      effect = "NO_SCHEDULE"
+    }
+  }
+}
 ```
 
 </details>
 
-### Scaling & Performance
+#### 2. GitOps Deployment with ArgoCD
 
-#### Horizontal Scaling
-
-```bash
-# Scale specific services
-docker-compose up -d --scale archon-server=3
-docker-compose up -d --scale archon-agents=2
-
-# Kubernetes scaling
-kubectl scale deployment archon-server --replicas=5 -n archon
-kubectl scale deployment archon-agents --replicas=3 -n archon
+```yaml
+# argocd/applications/archon-production.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: archon-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/JackSmack1971/ARCHONRELOADED
+    targetRevision: main
+    path: k8s/overlays/production
+    
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: archon
+    
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    
+  # Health checks for custom resources
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas  # Managed by HPA
 ```
 
-#### Performance Monitoring
+#### 3. Horizontal Pod Autoscaler Configuration
 
-```bash
-# Monitor resource usage
-docker stats
+```yaml
+# k8s/base/hpa/mcp-server-hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: archon-mcp-hpa
+  namespace: archon
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: archon-mcp
+  minReplicas: 3
+  maxReplicas: 50
+  
+  # Multi-metric scaling
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+        
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+        
+  # Custom metric: request latency p95
+  - type: Pods
+    pods:
+      metric:
+        name: http_request_duration_p95
+      target:
+        type: AverageValue
+        averageValue: "200m"  # 200ms target
+        
+  # Custom metric: concurrent sessions
+  - type: Object
+    object:
+      metric:
+        name: active_sessions_count
+      target:
+        type: Value
+        value: "200"  # Scale when approaching 250 limit
+      describedObject:
+        apiVersion: v1
+        kind: Service
+        name: archon-mcp
 
-# View logs
-docker-compose logs -f archon-server
-docker-compose logs -f --tail=100 archon-mcp
-
-# Health checks
-curl http://localhost:8080/health
-curl http://localhost:8051/sse
-curl http://localhost:8052/health
+  # Scaling behavior
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
 ```
 
-### Backup & Recovery
+#### 4. Pod Disruption Budget & Anti-Affinity
 
-#### Database Backup
+```yaml
+# k8s/base/pdb/mcp-server-pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: archon-mcp-pdb
+  namespace: archon
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: archon-mcp
 
-```bash
-# Automated Supabase backup
-# Use Supabase dashboard or CLI for automated backups
-
-# Manual backup
-pg_dump $SUPABASE_URL > archon_backup_$(date +%Y%m%d).sql
-
-# Restore from backup
-psql $SUPABASE_URL < archon_backup_20250817.sql
+---
+# Anti-affinity for cross-AZ distribution
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archon-mcp
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - archon-mcp
+            topologyKey: topology.kubernetes.io/zone
+            
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: archon.io/node-type
+                operator: In
+                values:
+                - general
+      
+      tolerations:
+      - key: archon.io/general
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
 ```
 
-#### Configuration Backup
+### Observability Stack (OpenTelemetry + Prometheus + Grafana)
+
+#### OpenTelemetry Collector Configuration
+
+```yaml
+# k8s/base/observability/otel-collector.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: archon
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            
+      prometheus:
+        config:
+          scrape_configs:
+          - job_name: 'archon-services'
+            kubernetes_sd_configs:
+            - role: pod
+            relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+    
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        
+      # Resource detection for K8s metadata
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+        extract:
+          metadata:
+          - k8s.pod.name
+          - k8s.pod.uid
+          - k8s.deployment.name
+          - k8s.namespace.name
+          - k8s.node.name
+    
+    exporters:
+      # Prometheus for metrics
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        
+      # Tempo for traces
+      otlp/tempo:
+        endpoint: http://tempo:4317
+        tls:
+          insecure: true
+          
+      # Loki for logs  
+      loki:
+        endpoint: http://loki:3100/loki/api/v1/push
+    
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [otlp/tempo]
+          
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [k8sattributes, batch]
+          exporters: [prometheus]
+          
+        logs:
+          receivers: [otlp]
+          processors: [k8sattributes, batch]
+          exporters: [loki]
+```
+
+#### SLO Monitoring & Alerting
+
+```yaml
+# k8s/base/monitoring/slo-alerts.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: archon-slo-alerts
+  namespace: archon
+spec:
+  groups:
+  - name: archon.slos
+    rules:
+    # Search latency SLO (p95 < 350ms)
+    - alert: SearchLatencyHigh
+      expr: |
+        histogram_quantile(0.95, 
+          rate(http_request_duration_seconds_bucket{
+            job="archon-mcp",
+            handler="/api/search"
+          }[5m])
+        ) > 0.35
+      for: 2m
+      labels:
+        severity: warning
+        slo: latency
+      annotations:
+        summary: "Search latency p95 above SLO threshold"
+        description: "p95 latency is {{ $value }}s, exceeding 350ms SLO"
+        
+    # Dense search latency SLO (p95 < 200ms)  
+    - alert: DenseSearchLatencyHigh
+      expr: |
+        histogram_quantile(0.95,
+          rate(http_request_duration_seconds_bucket{
+            job="archon-mcp",
+            handler="/api/search/dense"
+          }[5m])
+        ) > 0.20
+      for: 1m
+      labels:
+        severity: critical
+        slo: latency
+      annotations:
+        summary: "Dense search latency p95 above SLO threshold"
+        description: "Dense search p95 latency is {{ $value }}s, exceeding 200ms SLO"
+        
+    # Availability SLO (99.9% uptime)
+    - alert: AvailabilityLow
+      expr: |
+        (
+          sum(rate(http_requests_total{job="archon-mcp"}[5m])) -
+          sum(rate(http_requests_total{job="archon-mcp",code=~"5.."}[5m]))
+        ) / sum(rate(http_requests_total{job="archon-mcp"}[5m])) < 0.999
+      for: 5m
+      labels:
+        severity: critical
+        slo: availability
+      annotations:
+        summary: "Service availability below SLO"
+        description: "Availability is {{ $value | humanizePercentage }}, below 99.9% SLO"
+        
+    # Concurrent sessions SLO (≥250 per shard)
+    - alert: ConcurrentSessionsLow
+      expr: |
+        archon_active_sessions{job="archon-mcp"} < 250
+      for: 10m
+      labels:
+        severity: warning
+        slo: throughput
+      annotations:
+        summary: "Concurrent sessions below target"
+        description: "Only {{ $value }} active sessions, target is ≥250 per shard"
+```
+
+### Production Readiness Checklist
+
+#### Pre-Deployment Validation
 
 ```bash
-# Backup configuration
-tar -czf archon_config_$(date +%Y%m%d).tar.gz .env docker-compose.yml
+# Infrastructure validation
+terraform plan -var-file="production.tfvars"
+kubectl cluster-info
+kubectl get nodes -o wide
 
-# Backup knowledge data
-curl http://localhost:8080/api/knowledge-items > knowledge_backup.json
+# Application validation  
+helm template archon-mcp k8s/helm/archon-mcp \
+  --values k8s/helm/archon-mcp/values-prod.yaml | kubectl apply --dry-run=client -f -
+
+# Security validation
+kubectl auth can-i create pods --as=system:serviceaccount:archon:archon-mcp
+kubesec scan k8s/base/deployments/mcp-server.yaml
+
+# Performance validation
+kubectl run load-test --image=loadimpact/k6 --rm -it -- \
+  run - <load-test-script.js
+```
+
+#### Deployment Execution
+
+```bash
+# 1. Deploy infrastructure
+cd infrastructure/terraform/gke
+terraform apply -var-file="production.tfvars"
+
+# 2. Configure cluster access
+gcloud container clusters get-credentials archon-production \
+  --region=us-central1 --project=your-project
+
+# 3. Install observability stack
+kubectl apply -k k8s/observability/base
+
+# 4. Deploy ARCHON application
+kubectl apply -k k8s/overlays/production
+
+# 5. Verify deployment
+kubectl get pods -n archon
+kubectl get hpa -n archon
+kubectl get pdb -n archon
+
+# 6. Run health checks
+kubectl port-forward -n archon svc/archon-mcp 8051:8051 &
+curl http://localhost:8051/health
+
+# 7. Validate SLOs
+kubectl port-forward -n monitoring svc/grafana 3000:3000 &
+# Visit http://localhost:3000 and check SLO dashboard
+```
+
+#### Post-Deployment Monitoring
+
+```bash
+# Monitor golden signals
+kubectl logs -n archon deployment/archon-mcp -f
+
+# Check HPA scaling behavior
+kubectl get hpa archon-mcp-hpa -w
+
+# Validate observability data
+kubectl port-forward -n monitoring svc/prometheus 9090:9090 &
+# Query: rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
+
+# Test failover scenarios
+kubectl delete pod -n archon -l app=archon-mcp --force
+# Verify automatic recovery and SLO compliance
 ```
 
 ---
