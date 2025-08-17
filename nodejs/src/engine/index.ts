@@ -1,7 +1,5 @@
-import pino from 'pino'
+import { logger } from '../utils/logger'
 import { secureFetch } from '../utils/http'
-
-export const logger = pino()
 
 export class EngineError extends Error {
   constructor(message: string) {

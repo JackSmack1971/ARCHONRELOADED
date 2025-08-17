@@ -1,17 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { runEngineTask, EngineError, logger } from '../engine'
+vi.mock('../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}))
+import { runEngineTask, EngineError } from '../engine'
+import { logger } from '../utils/logger'
 
 describe('runEngineTask', () => {
   const originalFetch = global.fetch
   beforeEach(() => {
     process.env.ENGINE_URL = 'https://engine.example.com'
-    vi.spyOn(logger, 'info')
-    vi.spyOn(logger, 'error')
   })
   afterEach(() => {
     global.fetch = originalFetch
     delete process.env.ENGINE_URL
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
   it('rejects invalid id', async () => {
     await expect(runEngineTask('bad')).rejects.toBeInstanceOf(EngineError)

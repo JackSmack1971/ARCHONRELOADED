@@ -1,17 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { fetchMCP, MCPError, logger } from '../mcp'
+vi.mock('../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}))
+import { fetchMCP, MCPError } from '../mcp'
+import { logger } from '../utils/logger'
 
 describe('fetchMCP', () => {
   const originalFetch = global.fetch
   beforeEach(() => {
     process.env.MCP_BASE_URL = 'https://api.example.com'
-    vi.spyOn(logger, 'info')
-    vi.spyOn(logger, 'error')
   })
   afterEach(() => {
     global.fetch = originalFetch
     delete process.env.MCP_BASE_URL
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
   it('rejects invalid resource', async () => {
     await expect(fetchMCP('bad resource')).rejects.toBeInstanceOf(MCPError)
