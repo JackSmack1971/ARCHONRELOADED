@@ -22,6 +22,14 @@ describe('fetchMCP', () => {
     await expect(fetchMCP('good')).rejects.toBeInstanceOf(MCPError)
     expect(logger.error).toHaveBeenCalled()
   })
+
+  it('handles fetch failure', async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: false, status: 500, statusText: 'err' })
+    await expect(fetchMCP('good')).rejects.toBeInstanceOf(MCPError)
+    expect(logger.error).toHaveBeenCalled()
+  })
   it('fetches valid resource', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => 'ok' })
     await expect(fetchMCP('good')).resolves.toBe('ok')

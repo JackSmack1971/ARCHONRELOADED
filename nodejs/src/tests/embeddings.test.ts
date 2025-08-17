@@ -22,6 +22,12 @@ describe('generateEmbedding', () => {
     await expect(generateEmbedding('hi')).rejects.toBeInstanceOf(EmbeddingError)
     expect(logger.error).toHaveBeenCalled()
   })
+
+  it('handles fetch failure', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('timeout'))
+    await expect(generateEmbedding('hi')).rejects.toBeInstanceOf(EmbeddingError)
+    expect(logger.error).toHaveBeenCalled()
+  })
   it('returns embedding array', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,

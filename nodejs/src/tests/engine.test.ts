@@ -22,6 +22,22 @@ describe('runEngineTask', () => {
     await expect(runEngineTask('123e4567-e89b-12d3-a456-426614174000')).rejects.toBeInstanceOf(EngineError)
     expect(logger.error).toHaveBeenCalled()
   })
+
+  it('fails with invalid ENGINE_URL', async () => {
+    process.env.ENGINE_URL = 'bad'
+    await expect(
+      runEngineTask('123e4567-e89b-12d3-a456-426614174000'),
+    ).rejects.toBeInstanceOf(EngineError)
+    expect(logger.error).toHaveBeenCalled()
+  })
+
+  it('handles fetch failure', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('timeout'))
+    await expect(
+      runEngineTask('123e4567-e89b-12d3-a456-426614174000'),
+    ).rejects.toBeInstanceOf(EngineError)
+    expect(logger.error).toHaveBeenCalled()
+  })
   it('posts task', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true, text: async () => 'done' })
     await expect(runEngineTask('123e4567-e89b-12d3-a456-426614174000')).resolves.toBe('done')
