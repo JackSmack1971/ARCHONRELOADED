@@ -1,0 +1,361 @@
+{
+  "name": "ARCHON-MCP",
+  "version": "2.0.0",
+  "transports": {
+    "primary": "streamable-http",
+    "secondary": "stdio",
+    "legacy": "sse"
+  },
+  "endpoints": {
+    "stream": "/mcp/stream",
+    "rpc": "/mcp/rpc",
+    "sse": "/mcp/sse"
+  },
+  "tools": {
+    "search_knowledge": {
+      "description": "Hybrid (dense+BM25) or dense-only knowledge search with optional filters",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "hybrid",
+              "dense",
+              "sparse"
+            ],
+            "default": "hybrid"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "latency_ms": {
+            "type": "number"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "total_found": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "results",
+          "latency_ms"
+        ]
+      },
+      "slo": {
+        "p95_latency_ms": 350
+      }
+    },
+    "ingest_document": {
+      "description": "Queue a document for extraction, chunking, embedding, and indexing",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "source_type": {
+                "type": "string",
+                "enum": [
+                  "upload",
+                  "crawl",
+                  "api"
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "title",
+              "source_type"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "metadata"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "estimated_completion": {
+            "type": "string"
+          },
+          "chunk_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      },
+      "slo": {
+        "ttfi_p95_seconds": 30
+      }
+    },
+    "suggest_queries": {
+      "description": "Return query suggestions for partial text with confidence scores",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "partial_query": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "partial_query"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence_scores": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "suggestions",
+          "confidence_scores"
+        ]
+      }
+    },
+    "create_workspace": {
+      "description": "Provision a collaborative workspace for real-time sessions",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "real_time_sync": {
+                "type": "boolean",
+                "default": true
+              },
+              "max_participants": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 64,
+                "default": 8
+              },
+              "conflict_resolution": {
+                "type": "string",
+                "enum": [
+                  "ot",
+                  "crdt",
+                  "manual"
+                ],
+                "default": "ot"
+              }
+            },
+            "required": [
+              "real_time_sync",
+              "max_participants",
+              "conflict_resolution"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "config"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "workspace_id": {
+            "type": "string"
+          },
+          "join_url": {
+            "type": "string"
+          },
+          "session_token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "join_url",
+          "session_token"
+        ]
+      }
+    },
+    "sync_document": {
+      "description": "Apply a batch of document operations; returns applied ops & conflicts",
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "operations",
+          "session_id"
+        ]
+      },
+      "response_schema": {
+        "type": "object",
+        "properties": {
+          "applied_ops": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "document_version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "applied_ops",
+          "document_version"
+        ]
+      }
+    }
+  },
+  "rate_limits": {
+    "per_session": {
+      "search_knowledge": {
+        "rpm": 120,
+        "burst": 30
+      },
+      "ingest_document": {
+        "rpm": 6,
+        "burst": 2
+      }
+    }
+  },
+  "quotas": {
+    "max_concurrent_sessions_per_shard": 250
+  },
+  "error_model": {
+    "fields": [
+      "code",
+      "message",
+      "details",
+      "trace_id",
+      "timestamp",
+      "suggested_retry_after_ms"
+    ],
+    "examples": [
+      {
+        "code": "RATE_LIMITED",
+        "message": "Too many requests",
+        "suggested_retry_after_ms": 2000
+      },
+      {
+        "code": "VECTOR_BACKEND_SLOW",
+        "message": "Search exceeded SLO thresholds"
+      }
+    ]
+  },
+  "observability": {
+    "metrics": [
+      "http_request_duration_p95",
+      "active_sessions_count",
+      "event_loop_lag_ms",
+      "qdrant_search_latency_ms",
+      "cache_hit_ratio"
+    ],
+    "slos": {
+      "dense_search_p95_ms": 200,
+      "hybrid_search_p95_ms": 350,
+      "availability_pct": 99.9
+    }
+  },
+  "security": {
+    "auth": "oauth2|oidc",
+    "rbac": true,
+    "opa_policies": true,
+    "telemetry_pii_redaction": true
+  }
+}
