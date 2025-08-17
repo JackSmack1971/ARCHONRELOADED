@@ -1,17 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { generateEmbedding, EmbeddingError, logger } from '../embeddings'
+vi.mock('../utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}))
+import { generateEmbedding, EmbeddingError } from '../embeddings'
+import { logger } from '../utils/logger'
 
 describe('generateEmbedding', () => {
   const originalFetch = global.fetch
   beforeEach(() => {
     process.env.EMBEDDINGS_URL = 'https://emb.example.com'
-    vi.spyOn(logger, 'info')
-    vi.spyOn(logger, 'error')
   })
   afterEach(() => {
     global.fetch = originalFetch
     delete process.env.EMBEDDINGS_URL
-    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
   it('rejects invalid text', async () => {
     await expect(generateEmbedding('')).rejects.toBeInstanceOf(EmbeddingError)
