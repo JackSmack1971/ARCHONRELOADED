@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { secureFetch, HTTPError } from '../utils/http'
+import { secureFetch, HTTPError, logger } from '../utils/http'
 
 describe('secureFetch', () => {
   const originalFetch = global.fetch
@@ -8,6 +8,9 @@ describe('secureFetch', () => {
     global.fetch = vi
       .fn()
       .mockResolvedValue({ ok: false, status: 500, statusText: 'err' })
+    vi.spyOn(logger, 'info')
+    vi.spyOn(logger, 'warn')
+    vi.spyOn(logger, 'error')
   })
 
   afterEach(() => {
@@ -18,6 +21,7 @@ describe('secureFetch', () => {
 
   it('rejects invalid url', async () => {
     await expect(secureFetch('bad')).rejects.toBeInstanceOf(HTTPError)
+    expect(logger.error).toHaveBeenCalled()
   })
 
   it('honors max retries and throws HTTPError', async () => {
@@ -27,6 +31,9 @@ describe('secureFetch', () => {
     await vi.runAllTimersAsync()
     await expect(p).rejects.toBeInstanceOf(HTTPError)
     expect((global.fetch as any).mock.calls.length).toBe(3)
+    expect(logger.info).toHaveBeenCalledTimes(3)
+    expect(logger.warn).toHaveBeenCalledTimes(2)
+    expect(logger.error).toHaveBeenCalledTimes(1)
   })
 
   it('uses exponential backoff with jitter', async () => {
@@ -58,6 +65,7 @@ describe('secureFetch', () => {
     ;(global.fetch as any).mockResolvedValueOnce({ ok: true })
     const res = await secureFetch('https://example.com')
     expect(res.ok).toBe(true)
+    expect(logger.info).toHaveBeenCalledTimes(2)
   })
 })
 

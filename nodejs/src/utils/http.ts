@@ -1,3 +1,7 @@
+import pino from 'pino'
+
+export const logger = pino()
+
 export class HTTPError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -6,6 +10,17 @@ export class HTTPError extends Error {
 }
 
 const BASE_DELAY = 100
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function fetchOnce(url: string, options: RequestInit, timeout: number): Promise<Response> {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeout)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(id)
+  }
+}
 
 export async function secureFetch(
   url: string,
@@ -16,24 +31,24 @@ export async function secureFetch(
   try {
     new URL(url)
   } catch {
+    logger.error({ url }, 'invalid url')
     throw new HTTPError(0, 'Invalid URL')
   }
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController()
-    const id = setTimeout(() => controller.abort(), timeout)
+  for (let attempt = 0; ; attempt++) {
+    logger.info({ url, attempt }, 'request start')
     try {
-      const res = await fetch(url, { ...options, signal: controller.signal })
+      const res = await fetchOnce(url, options, timeout)
       if (!res.ok) throw new HTTPError(res.status, res.statusText)
+      logger.info({ url, status: res.status, attempt }, 'request success')
       return res
     } catch (err) {
-      if (attempt === retries) {
-        const message = err instanceof Error ? err.message : 'Unknown error'
-        throw err instanceof HTTPError ? err : new HTTPError(0, message)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      if (attempt >= retries) {
+        logger.error({ url, message: msg, attempt }, 'request failure')
+        throw err instanceof HTTPError ? err : new HTTPError(0, msg)
       }
-      await new Promise((r) => setTimeout(r, BASE_DELAY * 2 ** attempt + Math.random() * BASE_DELAY))
-    } finally {
-      clearTimeout(id)
+      logger.warn({ url, attempt, err: msg }, 'request retry')
+      await wait(BASE_DELAY * 2 ** attempt + Math.random() * BASE_DELAY)
     }
   }
-  throw new HTTPError(0, 'Failed to fetch')
 }
