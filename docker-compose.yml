@@ -2,7 +2,7 @@ services:
   # Server Service (FastAPI + Socket.IO + Crawling)
   archon-server:
     build:
-      context: ./python
+      context: "./python"
       dockerfile: Dockerfile.server
       args:
         BUILDKIT_INLINE_CACHE: 1
@@ -37,7 +37,7 @@ services:
   # Lightweight MCP Server Service (HTTP-based)
   archon-mcp:
     build:
-      context: ./python
+      context: "./python"
       dockerfile: Dockerfile.mcp
       args:
         BUILDKIT_INLINE_CACHE: 1
@@ -73,7 +73,7 @@ services:
   # AI Agents Service (ML/Reranking)
   archon-agents:
     build:
-      context: ./python
+      context: "./python"
       dockerfile: Dockerfile.agents
       args:
         BUILDKIT_INLINE_CACHE: 1
