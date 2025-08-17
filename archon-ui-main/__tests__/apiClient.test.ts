@@ -1,4 +1,5 @@
 import { apiGet, ApiError } from '../src/services/apiClient'
+import { logger } from '../src/utils/logger'
 
 describe('apiGet', () => {
   beforeEach(() => {
@@ -17,12 +18,22 @@ describe('apiGet', () => {
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
-  it('retries and fails', async () => {
+  it('retries with backoff and logs', async () => {
+    vi.useFakeTimers()
     const fetchMock = vi.fn().mockRejectedValue(new Error('fail'))
     // @ts-ignore: override for test
     global.fetch = fetchMock
-    await expect(apiGet('/test', 1, 10)).rejects.toBeInstanceOf(ApiError)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const loggerSpy = vi.spyOn(logger, 'info')
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout')
+    const promise = apiGet('/test', 2, 10, 50)
+    const assertion = expect(promise).rejects.toBeInstanceOf(ApiError)
+    await vi.runAllTimersAsync()
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(loggerSpy).toHaveBeenCalledTimes(2)
+    const delays = setTimeoutSpy.mock.calls.map((c) => c[1])
+    expect(delays).toContain(50)
+    expect(delays).toContain(100)
   })
 
   it('returns typed response', async () => {

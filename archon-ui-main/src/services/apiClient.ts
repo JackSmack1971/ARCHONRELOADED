@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { logger } from '../utils/logger'
 
 export class ApiError extends Error {
   constructor(message: string) {
@@ -23,28 +24,26 @@ export async function apiGet<T>(
   path: string,
   retries = 3,
   timeout = 5000,
+  baseDelay = 100,
 ): Promise<T> {
   const result = pathSchema.safeParse(path)
   if (!result.success) throw new ApiError('Invalid path')
   const urlPath = result.data
   const baseUrl = getBaseUrl()
-
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
     try {
-      const res = await fetch(`${baseUrl}${urlPath}`, {
-        signal: controller.signal,
-      })
+      const res = await fetch(`${baseUrl}${urlPath}`, { signal: controller.signal })
       clearTimeout(timer)
       if (!res.ok) throw new ApiError(`Request failed: ${res.status}`)
-      const data: T = await res.json()
-      return data
+      return (await res.json()) as T
     } catch (err) {
       clearTimeout(timer)
-      if (attempt === retries) {
-        throw new ApiError((err as Error).message)
-      }
+      if (attempt === retries) throw new ApiError((err as Error).message)
+      const delay = baseDelay * 2 ** attempt
+      logger.info(`Retry ${attempt + 1} in ${delay}ms`)
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
   throw new ApiError('Request failed')
