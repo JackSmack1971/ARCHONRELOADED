@@ -50,12 +50,9 @@ version_ge() {
 
 # Check if running as root
 check_root() {
-    # In the Codex environment the container runs as root by default. Running as
-    # root is therefore expected and cannot be avoided. Instead of exiting
-    # entirely, emit a warning so users are aware. Do not abort execution on
-    # EUID==0.
     if [[ $EUID -eq 0 ]]; then
-        warn "Running as root. This is normal in Codex sandboxes, but be cautious when running commands that modify your system."
+        error "This script should not be run as root for security reasons"
+        exit 1
     fi
 }
 
@@ -122,92 +119,155 @@ check_system_requirements() {
 # Install Docker and Docker Compose
 install_docker() {
     log "Checking Docker installation..."
-    # In Codex environments Docker is typically not available and cannot be
-    # installed because nested container runtimes are disabled. If the
-    # `docker` command is missing, warn the user and skip installation.
-    if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker is not available in this environment. Skipping Docker installation and related steps."
-        return
-    fi
-    # If Docker is present, perform a minimal version check without attempting
-    # to install or modify the host. Docker upgrades are beyond the scope of
-    # this script in Codex sandboxes.
-    local docker_version
-    docker_version=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
-    if [[ -n "$docker_version" ]] && version_ge "$docker_version" "$REQUIRED_DOCKER_VERSION"; then
-        success "Docker $docker_version is available"
+    
+    if command -v docker >/dev/null 2>&1; then
+        local docker_version
+        docker_version=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        
+        if version_ge "$docker_version" "$REQUIRED_DOCKER_VERSION"; then
+            success "Docker $docker_version is already installed"
+        else
+            warn "Docker version $docker_version is outdated. Minimum required: $REQUIRED_DOCKER_VERSION"
+        fi
     else
-        warn "Docker version $docker_version does not meet the minimum requirement ($REQUIRED_DOCKER_VERSION). Proceeding anyway."
+        log "Installing Docker..."
+        local os_type
+        os_type=$(detect_os)
+        
+        case $os_type in
+            ubuntu|linux)
+                curl -fsSL https://get.docker.com -o get-docker.sh
+                sudo sh get-docker.sh
+                sudo usermod -aG docker "$USER"
+                rm get-docker.sh
+                ;;
+            macos)
+                warn "Please install Docker Desktop for macOS from https://docs.docker.com/desktop/mac/install/"
+                warn "After installation, restart the terminal and run this script again"
+                exit 1
+                ;;
+            *)
+                error "Automatic Docker installation not supported for your OS"
+                error "Please install Docker manually: https://docs.docker.com/get-docker/"
+                exit 1
+                ;;
+        esac
     fi
-    # Check docker compose availability; in most modern Docker installations
-    # `docker compose` is built-in. If not available we log a warning but do not
-    # attempt to install, since package installation is restricted.
+    
+    # Check Docker Compose
     if ! command -v docker-compose >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
-        warn "Docker Compose is not available. Docker-dependent steps will be skipped."
+        log "Installing Docker Compose..."
+        local os_type
+        os_type=$(detect_os)
+        
+        case $os_type in
+            ubuntu|linux)
+                sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                sudo chmod +x /usr/local/bin/docker-compose
+                ;;
+            macos)
+                brew install docker-compose
+                ;;
+        esac
     fi
-    # If docker command is available and running, note success.
-    if docker ps >/dev/null 2>&1; then
-        success "Docker daemon is running"
-    else
-        warn "Docker daemon appears to be stopped or unreachable. Docker-dependent steps will be skipped."
+    
+    # Test Docker
+    if ! docker ps >/dev/null 2>&1; then
+        error "Docker is not running or current user lacks permissions"
+        info "Try: sudo usermod -aG docker $USER && newgrp docker"
+        exit 1
     fi
+    
+    success "Docker installation verified"
 }
 
 # Install Node.js and npm
 install_nodejs() {
     log "Checking Node.js installation..."
+    
     if command -v node >/dev/null 2>&1; then
         local node_version
         node_version=$(node --version | sed 's/v//')
-        # The Codex base image includes Node.js 20.x by default【773203997825559†L289-L297】,
-        # so we simply warn if the version is less than the required version but do not
-        # attempt to install or upgrade Node.js in this environment.
+        
         if version_ge "$node_version" "$REQUIRED_NODE_VERSION"; then
-            success "Detected Node.js $node_version"
+            success "Node.js $node_version is already installed"
         else
-            warn "Detected Node.js $node_version, which is older than the recommended $REQUIRED_NODE_VERSION."
+            warn "Node.js version $node_version is outdated. Minimum required: $REQUIRED_NODE_VERSION"
         fi
     else
-        # Node.js is missing; installation cannot be performed in Codex sandboxes.
-        error "Node.js is not installed and cannot be automatically installed in this environment."
-        exit 1
+        log "Installing Node.js..."
+        local os_type
+        os_type=$(detect_os)
+        
+        case $os_type in
+            ubuntu|linux)
+                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                sudo apt-get install -y nodejs
+                ;;
+            macos)
+                brew install node@20
+                ;;
+            *)
+                warn "Please install Node.js 20.x manually from https://nodejs.org/"
+                ;;
+        esac
     fi
-    # Verify npm (or pnpm/yarn) exists; the codex image includes npm【773203997825559†L289-L297】.
+    
+    # Verify npm
     if ! command -v npm >/dev/null 2>&1; then
-        error "npm not found. Ensure Node.js installation provides npm."
+        error "npm not found after Node.js installation"
         exit 1
     fi
-    success "Node.js environment verified"
+    
+    success "Node.js installation verified"
 }
 
 # Install Python and uv
 install_python() {
     log "Checking Python installation..."
-    # Python 3.12 is pre-installed in Codex images【773203997825559†L289-L297】. We verify that
-    # python3 exists and meets the minimal version requirement.
+    
+    # Check for Python 3.12+
     if command -v python3 >/dev/null 2>&1; then
         local python_version
         python_version=$(python3 --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        
         if version_ge "$python_version" "$REQUIRED_PYTHON_VERSION"; then
-            success "Detected Python $python_version"
+            success "Python $python_version is already installed"
         else
-            warn "Detected Python $python_version, which is older than the recommended $REQUIRED_PYTHON_VERSION."
+            warn "Python version $python_version is outdated. Minimum required: $REQUIRED_PYTHON_VERSION"
         fi
     else
-        error "Python3 is not available and cannot be installed automatically in this environment."
-        exit 1
+        log "Installing Python 3.12..."
+        local os_type
+        os_type=$(detect_os)
+        
+        case $os_type in
+            ubuntu|linux)
+                sudo apt-get update
+                sudo apt-get install -y software-properties-common
+                sudo add-apt-repository ppa:deadsnakes/ppa -y
+                sudo apt-get update
+                sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
+                sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+                ;;
+            macos)
+                brew install python@3.12
+                ;;
+            *)
+                warn "Please install Python 3.12+ manually from https://python.org/"
+                ;;
+        esac
     fi
-    # Ensure the `uv` package manager exists. If it does not, attempt a user-level install.
+    
+    # Install uv (modern Python package manager)
     if ! command -v uv >/dev/null 2>&1; then
-        warn "uv package manager not found. Attempting to install locally..."
-        # Use curl to install uv. This uses the preinstalled Rust toolchain, which is
-        # available in codex images【773203997825559†L289-L299】.
-        curl -LsSf https://astral.sh/uv/install.sh | sh || warn "Failed to install uv; falling back to pip"
-        # Source cargo environment if installed; ignore failure.
+        log "Installing uv package manager..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
         source "$HOME/.cargo/env" 2>/dev/null || true
         export PATH="$HOME/.cargo/bin:$PATH"
     fi
-    success "Python environment verified"
+    
+    success "Python and uv installation verified"
 }
 
 # Setup environment file
@@ -266,6 +326,44 @@ EOF
     fi
 }
 
+# Ensure an agents.md configuration file is present. Codex uses an `AGENTS.md` or
+# `agents.md` file to configure project-specific agent behaviors. If such a file
+# already exists in the project root, the installer will leave it untouched.
+# Otherwise, it creates a simple template to help users get started.
+setup_agents_file() {
+    log "Checking for agents configuration file..."
+    local agents_lower="${PROJECT_ROOT}/agents.md"
+    local agents_upper="${PROJECT_ROOT}/AGENTS.md"
+    if [[ -f "$agents_lower" || -f "$agents_upper" ]]; then
+        success "Existing agents configuration detected. Skipping creation."
+    else
+        cat > "$agents_lower" <<'EOF'
+# Agents Configuration
+
+This file defines project-specific agent configurations for use with OpenAI Codex.
+
+## Overview
+
+Define your agents here by specifying their roles, capabilities, and any
+configuration parameters required by your application. The Codex environment
+will read this file at startup to customise agent behaviour.
+
+## Example
+
+```markdown
+- name: ExampleAgent
+  description: Demonstrates how to define an agent
+  language: python
+  entrypoint: python examples/example_agent.py
+```
+
+See the project documentation for more details on agent configuration.
+EOF
+        info "Created default agents.md configuration file"
+        warn "Please edit agents.md to define your custom agents before running the platform"
+    fi
+}
+
 # Install Python dependencies
 install_python_dependencies() {
     log "Installing Python dependencies..."
@@ -318,57 +416,45 @@ install_nodejs_dependencies() {
 # Build Docker images
 build_docker_images() {
     log "Building Docker images..."
-    # If Docker or Docker Compose is unavailable, skip building images. This is
-    # common in Codex sandboxes where nested containerization is disabled.
-    if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker is not available. Skipping Docker image build."
-        return
-    fi
-    # Build images with proper caching using docker compose. Prefer the newer
-    # `docker compose` subcommand but fall back to the standalone binary if
-    # available. If both commands fail, emit an error but do not abort the
-    # entire installation.
-    if docker compose build --parallel 2>/dev/null; then
+    
+    # Build images with proper caching
+    if docker-compose build --parallel 2>/dev/null; then
         success "Docker images built successfully"
-    elif command -v docker-compose >/dev/null 2>&1 && docker-compose build --parallel 2>/dev/null; then
+    elif docker compose build --parallel 2>/dev/null; then
         success "Docker images built successfully"
     else
-        warn "Failed to build Docker images. Continuing without Docker support."
+        error "Failed to build Docker images"
+        exit 1
     fi
 }
 
 # Verify installation
 verify_installation() {
     log "Verifying installation..."
-    # In environments without Docker we cannot start containers. Instead we
-    # provide guidance to the user on how to start the application manually.
-    if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker not available; skipping container startup and health checks."
-        warn "You can run the backend and frontend services directly using the provided Python and Node scripts."
-        return
-    fi
-    # Start services via docker compose. Prefer `docker compose` subcommand; fall back to
-    # standalone docker-compose binary.
+    
+    # Start services
     log "Starting services..."
-    if docker compose up -d 2>/dev/null; then
-        success "Services started"
-    elif command -v docker-compose >/dev/null 2>&1 && docker-compose up -d 2>/dev/null; then
+    if docker-compose up -d 2>/dev/null || docker compose up -d 2>/dev/null; then
         success "Services started"
     else
-        warn "Failed to start Docker services. You may need to start services manually."
-        return
+        error "Failed to start services"
+        exit 1
     fi
+    
     # Wait for services to be ready
     log "Waiting for services to initialize..."
     sleep 30
-    # Perform health checks to ensure services are responding.
+    
+    # Health checks
     local health_checks=(
         "http://localhost:8080/health|API Server"
         "http://localhost:8051|MCP Server"
         "http://localhost:8052/health|Agents Server"
         "http://localhost:3737|Frontend"
     )
+    
     local failed_checks=0
+    
     for check in "${health_checks[@]}"; do
         IFS='|' read -r url service <<< "$check"
         if curl -f -s "$url" >/dev/null 2>&1; then
@@ -378,6 +464,7 @@ verify_installation() {
             ((failed_checks++))
         fi
     done
+    
     if [[ $failed_checks -eq 0 ]]; then
         success "All services are healthy"
     else
@@ -418,6 +505,8 @@ main() {
     
     # Project setup
     setup_environment
+    # Ensure an agents.md file exists or create a template
+    setup_agents_file
     install_python_dependencies
     install_nodejs_dependencies
     
