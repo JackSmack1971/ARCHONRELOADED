@@ -367,6 +367,19 @@ After forking the repository, you'll need to:
 - **Real-time Updates**: Use Socket.IO rooms appropriately
 - **Database**: Consider indexes for new query patterns
 
+### CI Requirements
+
+All pull requests run a GitHub Actions workflow that executes linting, type checks, and tests for each Node-based package (`archon-ui-main`, `nodejs`, and `docs`). Run these locally before pushing:
+
+```bash
+npm run lint --if-present
+npm run build --if-present  # type checks
+npm test --if-present
+```
+
+The workflow caches npm dependencies and uploads coverage reports as artifacts. Ensure tests produce coverage so CI can collect it.
+
+
 ## 🏛️ Architectural Guidelines
 
 ### Service Design Principles
