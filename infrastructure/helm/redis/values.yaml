@@ -1,0 +1,12 @@
+replicaCount: 1
+image:
+  repository: archon/redis
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  type: ClusterIP
+  port: 80
+envSecret:
+  name: redis-secrets
+  key: apiKey
+
