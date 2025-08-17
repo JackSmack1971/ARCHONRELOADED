@@ -22,6 +22,7 @@ cd ARCHONRELOADED
 
 # Configure environment
 cp .env.example .env
+# See .env.example for all required variables
 # Edit .env with your Supabase credentials
 
 # Start all services
@@ -30,6 +31,8 @@ docker-compose up -d
 # Access the platform
 open http://localhost:3737
 ```
+
+See [.env.example](.env.example) for the full list of required API keys and database settings.
 
 **🎯 Ready in 3 minutes** - ARCHON provides a complete AI development environment with knowledge management, real-time collaboration, and MCP integration for AI coding assistants.
 
