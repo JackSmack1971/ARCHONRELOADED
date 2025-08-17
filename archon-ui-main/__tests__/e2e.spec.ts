@@ -1,5 +1,8 @@
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-test.skip('homepage loads', async ({ page }) => {
+test('homepage loads', async ({ page }) => {
   await page.goto('/')
+  await expect(
+    page.getByRole('heading', { name: 'ARCHON RELOADED' })
+  ).toBeVisible()
 })
