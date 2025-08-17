@@ -344,9 +344,9 @@ classDiagram
         +get_knowledge_items()
     }
     
-    Project ||--o{ Task : contains
-    Project ||--o{ KnowledgeItem : references
-    Source ||--o{ KnowledgeItem : generates
+    Project "1" --> "many" Task : contains
+    Project "1" --> "many" KnowledgeItem : references
+    Source "1" --> "many" KnowledgeItem : generates
 ```
 
 ---
