@@ -15,17 +15,34 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 export const client: AxiosInstance = axios.create({
   baseURL: API_URL,
   timeout: 5000,
+  withCredentials: true,
 });
 
 const ENDPOINT_REGEX = /^\/[\w-]+(?:\/[\w-]+)*(?:\?[\w=&-]*)?$/;
 
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+let authToken: string | null = null;
+
+export const setAuthToken = (token: string | null): void => {
+  authToken = token;
+};
+
+const getAuthToken = (): string | null => authToken;
+
+client.interceptors.request.use(
+  (config) => {
+    try {
+      const token = getAuthToken();
+      if (token) {
+        config.headers = config.headers ?? {};
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error('Token retrieval failed', error);
+    }
+    return config;
+  },
+  (error) => Promise.reject(error),
+);
 
 export async function request<T>(endpoint: string, retries = 3): Promise<T> {
   if (!ENDPOINT_REGEX.test(endpoint)) {
