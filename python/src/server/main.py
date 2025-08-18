@@ -17,6 +17,7 @@ import socketio
 from .config import settings
 from .auth.dependencies import require_role
 from .routes import auth, documents, health, projects, sources, search
+from .socket import sio
 
 
 class HealthCheckError(Exception):
@@ -26,12 +27,6 @@ class HealthCheckError(Exception):
 # Configure structured JSON logging
 logger.remove()
 logger.add(sys.stdout, serialize=True)
-
-
-# Socket.IO server
-sio = socketio.AsyncServer(
-    async_mode="asgi", cors_allowed_origins=settings.cors_origins
-)
 
 
 # FastAPI application
@@ -58,18 +53,6 @@ api.include_router(projects.router, dependencies=protected)
 api.include_router(sources.router, dependencies=protected)
 api.include_router(documents.router, dependencies=protected)
 api.include_router(search.router, dependencies=protected)
-
-
-@sio.event
-async def connect(sid: str, environ: dict) -> None:
-    """Handle a new Socket.IO connection."""
-    logger.info("socket connected", sid=sid)
-
-
-@sio.event
-async def disconnect(sid: str) -> None:
-    """Handle Socket.IO disconnects."""
-    logger.info("socket disconnected", sid=sid)
 
 
 # Mount Socket.IO on the FastAPI app
