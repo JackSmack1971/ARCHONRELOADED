@@ -9,12 +9,13 @@ application to enable real-time features.
 from __future__ import annotations
 
 import sys
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 import socketio
 
 from .config import settings
+from .routes import health, projects, sources, documents
 
 
 class HealthCheckError(Exception):
@@ -49,14 +50,10 @@ async def rate_limit() -> None:
     return None
 
 
-@api.get("/health")
-async def health(_: None = Depends(rate_limit)) -> dict[str, str]:
-    """Simple health check endpoint."""
-    try:
-        return {"status": "ok"}
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.exception("health check failed")
-        raise HTTPException(status_code=503, detail="unhealthy") from exc
+api.include_router(health.router, dependencies=[Depends(rate_limit)])
+api.include_router(projects.router, dependencies=[Depends(rate_limit)])
+api.include_router(sources.router, dependencies=[Depends(rate_limit)])
+api.include_router(documents.router, dependencies=[Depends(rate_limit)])
 
 
 @sio.event
