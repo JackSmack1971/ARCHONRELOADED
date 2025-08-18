@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 
 export class ApiError extends Error {
   constructor(message: string, public status?: number) {
