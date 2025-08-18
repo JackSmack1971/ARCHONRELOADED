@@ -1,15 +1,47 @@
 import os
 from typing import Set
+from uuid import uuid4
 
-import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-# Set API key before importing the app
+# Configure environment before importing app
 os.environ["MCP_API_KEY"] = "test-key"
+os.environ["SUPABASE_URL"] = "http://example.com"
+os.environ["SUPABASE_KEY"] = "key"
+
 from src.mcp.mcp_server import app  # noqa: E402
-from src.mcp.tools.project_tools import PROJECTS  # noqa: E402
-from src.mcp.tools.source_tools import PROJECT_SOURCES  # noqa: E402
+from src.mcp import deps  # noqa: E402
+from src.server.models.document import Document  # noqa: E402
+from src.server.models.project import Project  # noqa: E402
+
+
+class FakeDatabaseService:
+    """In-memory stand-in for the real database."""
+
+    def __init__(self) -> None:
+        self.projects: dict[str, Project] = {}
+        self.documents: dict[str, Document] = {}
+
+    async def create_project(self, project: Project) -> Project:
+        self.projects[str(project.id)] = project
+        return project
+
+    async def list_projects(self) -> list[Project]:
+        return list(self.projects.values())
+
+    async def get_project(self, project_id):
+        return self.projects.get(str(project_id))
+
+    async def vector_search(self, embedding, query):
+        return list(self.documents.values())[: query.match_count]
+
+    async def get_document(self, doc_id):
+        return self.documents.get(str(doc_id))
+
+
+fake_db = FakeDatabaseService()
+deps.db_service = fake_db
 
 
 @pytest.mark.asyncio
@@ -25,58 +57,71 @@ async def test_sse_connect() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_workflow() -> None:
-    PROJECTS.clear()
-    PROJECT_SOURCES.clear()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         headers = {"Authorization": "Bearer test-key"}
+        # list tools
         res = await client.post(
             "/rpc", headers=headers, json={"id": "1", "method": "tools/list"}
         )
         tools: Set[str] = set(res.json()["result"]["tools"])
         assert {
-            "list_projects",
             "create_project",
+            "list_projects",
             "get_project_status",
-            "add_source",
-            "query_knowledge",
+            "search_documents",
+            "get_document",
+            "create_task",
+            "get_task_status",
         } <= tools
+        # create project
         res = await client.post(
             "/rpc",
             headers=headers,
             json={"id": "2", "method": "create_project", "params": {"name": "demo"}},
         )
         project_id = res.json()["result"]["id"]
+        # list projects
+        res = await client.post(
+            "/rpc",
+            headers=headers,
+            json={"id": "3", "method": "list_projects"},
+        )
+        assert res.json()["result"]["projects"][0]["id"] == project_id
+        # prepare document and test search & retrieval
+        doc_id = uuid4()
+        fake_db.documents[str(doc_id)] = Document(
+            id=doc_id, source_id=uuid4(), content="hello", embeddings=[], metadata={}
+        )
+        res = await client.post(
+            "/rpc",
+            headers=headers,
+            json={"id": "4", "method": "search_documents", "params": {"query": "hi"}},
+        )
+        assert res.json()["result"]["documents"]
+        res = await client.post(
+            "/rpc",
+            headers=headers,
+            json={"id": "5", "method": "get_document", "params": {"document_id": str(doc_id)}},
+        )
+        assert res.json()["result"]["id"] == str(doc_id)
+        # task creation and status
         res = await client.post(
             "/rpc",
             headers=headers,
             json={
-                "id": "3",
-                "method": "add_source",
-                "params": {"project_id": project_id, "source": "doc"},
+                "id": "6",
+                "method": "create_task",
+                "params": {"project_id": project_id, "description": "work"},
             },
         )
-        assert "doc" in res.json()["result"]["sources"]
+        task_id = res.json()["result"]["id"]
         res = await client.post(
             "/rpc",
             headers=headers,
-            json={
-                "id": "4",
-                "method": "query_knowledge",
-                "params": {"project_id": project_id, "query": "doc"},
-            },
+            json={"id": "7", "method": "get_task_status", "params": {"task_id": task_id}},
         )
-        assert res.json()["result"]["matches"] == ["doc"]
-        res = await client.post(
-            "/rpc",
-            headers=headers,
-            json={
-                "id": "5",
-                "method": "get_project_status",
-                "params": {"project_id": project_id},
-            },
-        )
-        assert res.json()["result"]["name"] == "demo"
+        assert res.json()["result"]["status"] == "pending"
 
 
 @pytest.mark.asyncio
