@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchDocuments, type SearchResult } from '../services/api';
-import { useSocket } from './useSocket';
+import { useSocket, type SearchCompleted } from './useSocket';
 
 export const useSearch = (query: string) => {
   const { socket } = useSocket();
@@ -9,9 +9,12 @@ export const useSearch = (query: string) => {
 
   useEffect(() => {
     if (!socket) return;
-    const handler = (data: { query: string; results: SearchResult[] }) => {
-      if (data.query === query) {
-        queryClient.setQueryData(['search', query], data.results);
+    const handler = (data: SearchCompleted) => {
+      if (data.query === query && Array.isArray(data.results)) {
+        queryClient.setQueryData(
+          ['search', query],
+          data.results as SearchResult[]
+        );
       }
     };
     socket.on('search:completed', handler);

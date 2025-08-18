@@ -7,7 +7,7 @@ interface UploadProgress {
   error?: string;
 }
 
-interface SearchCompleted {
+export interface SearchCompleted {
   query: string;
   results: unknown[];
 }
