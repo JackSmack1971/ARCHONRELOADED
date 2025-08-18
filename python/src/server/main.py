@@ -15,7 +15,8 @@ from loguru import logger
 import socketio
 
 from .config import settings
-from .routes import health, projects, sources, documents
+from .auth.dependencies import require_role
+from .routes import auth, documents, health, projects, sources
 
 
 class HealthCheckError(Exception):
@@ -51,9 +52,11 @@ async def rate_limit() -> None:
 
 
 api.include_router(health.router, dependencies=[Depends(rate_limit)])
-api.include_router(projects.router, dependencies=[Depends(rate_limit)])
-api.include_router(sources.router, dependencies=[Depends(rate_limit)])
-api.include_router(documents.router, dependencies=[Depends(rate_limit)])
+api.include_router(auth.router)
+protected = [Depends(rate_limit), Depends(require_role("user"))]
+api.include_router(projects.router, dependencies=protected)
+api.include_router(sources.router, dependencies=protected)
+api.include_router(documents.router, dependencies=protected)
 
 
 @sio.event
