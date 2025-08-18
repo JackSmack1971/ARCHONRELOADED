@@ -99,6 +99,16 @@ async def client():
     api.dependency_overrides[get_database_service] = _get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/auth/register",
+            json={"username": "tester", "password": "testpassword123"},
+        )
+        res = await client.post(
+            "/auth/login",
+            json={"username": "tester", "password": "testpassword123"},
+        )
+        token = res.json()["data"]["access_token"]
+        client.headers.update({"Authorization": f"Bearer {token}"})
         yield client
     api.dependency_overrides.clear()
 
