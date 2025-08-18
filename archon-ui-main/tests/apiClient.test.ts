@@ -1,8 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { request, postRequest, uploadRequest, ApiError, client } from '../src/services/apiClient';
+import {
+  request,
+  postRequest,
+  uploadRequest,
+  ApiError,
+  client,
+  setAuthToken,
+} from '../src/services/apiClient';
+import type { InternalAxiosRequestConfig } from 'axios';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setAuthToken(null);
 });
 
 describe('apiClient', () => {
@@ -33,5 +42,20 @@ describe('apiClient', () => {
     const form = new FormData();
     form.append('f', 'v');
     await expect(uploadRequest('/upload', form, 1)).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('adds Authorization header when token is set', async () => {
+    setAuthToken('secureToken');
+    const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+    client.defaults.adapter = adapter;
+    await request('/auth');
+    expect(adapter).toHaveBeenCalled();
+    expect(adapter.mock.calls[0][0].headers.Authorization).toBe('Bearer secureToken');
   });
 });
