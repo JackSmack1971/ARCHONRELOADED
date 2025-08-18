@@ -24,7 +24,10 @@ from ..models.base import ResponseModel, ResponseStatus
 from ..models.document import Document
 from ..models.query import Query
 from ..services.database import DatabaseError, DatabaseService
-from ..services.embedding import generate_embedding
+from ..services.embedding import (
+    EmbeddingProcessingError,
+    generate_embedding,
+)
 from ..socket import broadcast_upload_progress, BroadcastError
 from . import get_database_service
 from loguru import logger
@@ -99,7 +102,7 @@ async def _process_embedding(
             )
         except BroadcastError:
             logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
-    except Exception as exc:  # noqa: BLE001
+    except EmbeddingProcessingError as exc:
         INGESTION_PROGRESS[doc_id] = {"status": "failed", "error": str(exc)}
         try:
             await broadcast_upload_progress(
