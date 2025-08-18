@@ -1,17 +1,17 @@
-import React from 'react';
-import { Button } from '../components/atoms/Button';
+import React, { useState } from 'react';
+import { ProjectForm } from '../features/projects/ProjectForm';
+import { DocumentUpload } from '../features/documents/DocumentUpload';
+import { SearchResults } from '../features/search/SearchResults';
 
 export const Home: React.FC = () => {
-  const handleClick = () => {
-    console.log('Button clicked');
-  };
+  const [projectId, setProjectId] = useState('');
 
   return (
     <div>
       <h1>Archon UI</h1>
-      <Button variant="primary" onClick={handleClick}>
-        Click me
-      </Button>
+      <ProjectForm onCreated={setProjectId} />
+      <DocumentUpload projectId={projectId} />
+      <SearchResults />
     </div>
   );
 };
