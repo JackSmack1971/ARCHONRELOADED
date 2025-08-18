@@ -25,7 +25,9 @@ from ..models.document import Document
 from ..models.query import Query
 from ..services.database import DatabaseError, DatabaseService
 from ..services.embedding import generate_embedding
+from ..socket import broadcast_upload_progress, BroadcastError
 from . import get_database_service
+from loguru import logger
 
 
 class DocumentUpdate(BaseModel):
@@ -54,16 +56,35 @@ async def _read_file(file: UploadFile) -> str:
 
 
 async def _process_embedding(
-    doc_id: UUID, content: str, db: DatabaseService
+    doc_id: UUID, content: str, db: DatabaseService, project_id: UUID4
 ) -> None:
     INGESTION_PROGRESS[doc_id]["status"] = "processing"
+    try:
+        await broadcast_upload_progress(
+            str(project_id), {"doc_id": str(doc_id), "status": "processing"}
+        )
+    except BroadcastError:
+        logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
     try:
         emb = await generate_embedding(content)
         await db.store_embedding(doc_id, emb)
         await db.update_document(doc_id, {"embeddings": emb})
         INGESTION_PROGRESS[doc_id]["status"] = "completed"
+        try:
+            await broadcast_upload_progress(
+                str(project_id), {"doc_id": str(doc_id), "status": "completed"}
+            )
+        except BroadcastError:
+            logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
     except Exception as exc:  # noqa: BLE001
         INGESTION_PROGRESS[doc_id] = {"status": "failed", "error": str(exc)}
+        try:
+            await broadcast_upload_progress(
+                str(project_id),
+                {"doc_id": str(doc_id), "status": "failed", "error": str(exc)},
+            )
+        except BroadcastError:
+            logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
 
 
 @router.post("/", response_model=ResponseModel[Document], status_code=status.HTTP_201_CREATED)
@@ -149,7 +170,13 @@ async def upload_document(
         )
         await db.create_document(doc)
         INGESTION_PROGRESS[doc_id] = {"status": "queued"}
-        background.add_task(_process_embedding, doc_id, content, db)
+        try:
+            await broadcast_upload_progress(
+                str(source_id), {"doc_id": str(doc_id), "status": "queued"}
+            )
+        except BroadcastError:
+            logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
+        background.add_task(_process_embedding, doc_id, content, db, source_id)
         return ResponseModel(status=ResponseStatus.SUCCESS, data={"id": doc_id})
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="upload failed") from exc
