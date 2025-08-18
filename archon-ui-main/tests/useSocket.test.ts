@@ -7,6 +7,7 @@ vi.mock('socket.io-client', () => {
     on: vi.fn((e, cb) => { handlers[e] = cb; }),
     emit: vi.fn(),
     disconnect: vi.fn(),
+    io: { on: vi.fn((e, cb) => { handlers[e] = cb; }) },
   };
   return { io: () => mSocket };
 });

@@ -7,6 +7,20 @@ export interface SearchCompleted { query: string; results: SearchResult[] }
 interface ServerToClient { 'document:upload_progress': (d: UploadProgress) => void; 'search:completed': (d: SearchCompleted) => void; 'user:join': (d:{userId:string})=>void; 'user:leave': (d:{userId:string})=>void }
 interface ClientToServer { project_join: (d:{projectId:string})=>void; project_leave: (d:{projectId:string})=>void }
 
+class SocketInitializationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SocketInitializationError';
+  }
+}
+
+class SocketEmitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SocketEmitError';
+  }
+}
+
 const buildSocket = (
   onConnect: () => void,
   onDisconnect: () => void,
@@ -15,18 +29,25 @@ const buildSocket = (
 ): Socket<ServerToClient, ClientToServer> => {
   const url = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const userId = localStorage.getItem('userId') || 'anonymous';
-  const s: Socket<ServerToClient, ClientToServer> = io(url, {
-    transports: ['websocket'],
-    reconnectionAttempts: 5,
-    timeout: 5000,
-    query: { user_id: userId },
-  });
-  s.on('connect', onConnect);
-  s.on('disconnect', onDisconnect);
-  s.on('user:join', ({ userId }) => onJoin(userId));
-  s.on('user:leave', ({ userId }) => onLeave(userId));
-  s.io.on('reconnect', onConnect);
-  return s;
+  try {
+    const s: Socket<ServerToClient, ClientToServer> = io(url, {
+      transports: ['websocket'],
+      reconnectionAttempts: 5,
+      timeout: 5000,
+      query: { user_id: userId },
+    });
+    if (!s || !s.io) {
+      throw new SocketInitializationError('Socket.io client failed to initialize');
+    }
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+    s.on('user:join', ({ userId }) => onJoin(userId));
+    s.on('user:leave', ({ userId }) => onLeave(userId));
+    s.io.on('reconnect', onConnect);
+    return s;
+  } catch (err) {
+    throw new SocketInitializationError((err as Error).message);
+  }
 };
 
 export const useSocket = () => {
@@ -51,19 +72,31 @@ export const useSocket = () => {
     };
   }, []);
 
-  const joinProject = useCallback((projectId: string) => {
-    if (projectId) {
-      projects.current.add(projectId);
-      socket?.emit('project_join', { projectId });
-    }
-  }, [socket]);
+  const joinProject = useCallback(
+    (projectId: string) => {
+      if (!projectId) return;
+      try {
+        projects.current.add(projectId);
+        socket?.emit('project_join', { projectId });
+      } catch (err) {
+        throw new SocketEmitError((err as Error).message);
+      }
+    },
+    [socket],
+  );
 
-  const leaveProject = useCallback((projectId: string) => {
-    if (projectId) {
-      projects.current.delete(projectId);
-      socket?.emit('project_leave', { projectId });
-    }
-  }, [socket]);
+  const leaveProject = useCallback(
+    (projectId: string) => {
+      if (!projectId) return;
+      try {
+        projects.current.delete(projectId);
+        socket?.emit('project_leave', { projectId });
+      } catch (err) {
+        throw new SocketEmitError((err as Error).message);
+      }
+    },
+    [socket],
+  );
 
   return { socket, isConnected, users, joinProject, leaveProject };
 };
