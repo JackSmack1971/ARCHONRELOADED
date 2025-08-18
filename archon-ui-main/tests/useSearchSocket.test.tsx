@@ -2,13 +2,14 @@ import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, describe, it, expect } from 'vitest';
 import { useSearch } from '../src/hooks/useSearch';
+import type { SearchCompleted } from '../src/hooks/useSocket';
 
-const handlers: Record<string, (data: any) => void> = {};
+const handlers: Record<string, (data: SearchCompleted) => void> = {};
 
 vi.mock('../src/hooks/useSocket', () => ({
   useSocket: () => ({
     socket: {
-      on: (event: string, handler: (data: any) => void) => {
+      on: (event: string, handler: (data: SearchCompleted) => void) => {
         handlers[event] = handler;
       },
       off: (event: string) => {
