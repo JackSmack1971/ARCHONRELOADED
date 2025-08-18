@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 from loguru import logger
 import socketio
 
+from .auth.jwt import JWTError, JWTService
 from .config import settings
 
 
@@ -23,6 +24,7 @@ class BroadcastError(Exception):
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=settings.cors_origins)
 _user_sessions: Dict[str, Set[str]] = {}
+_jwt = JWTService()
 
 
 @sio.event
@@ -31,8 +33,15 @@ async def connect(sid: str, environ: Dict[str, Any]) -> None:
     try:
         query = parse_qs(environ.get("QUERY_STRING", ""))
         user_id = query.get("user_id", [""])[0]
-        if not user_id:
-            raise SocketSessionError("user_id required")
+        token = query.get("token", [""])[0]
+        if not user_id or not token:
+            raise SocketSessionError("user_id and token required")
+        try:
+            payload = _jwt.verify_token(token)
+        except JWTError as exc:
+            raise SocketSessionError("invalid token") from exc
+        if payload.get("sub") != user_id:
+            raise SocketSessionError("token user mismatch")
         await sio.save_session(sid, {"user_id": user_id})
         _user_sessions.setdefault(user_id, set()).add(sid)
         logger.info("socket connected", sid=sid, user_id=user_id)
