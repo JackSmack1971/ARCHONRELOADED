@@ -273,3 +273,53 @@ async def test_upload_rejects_malformed_pdf(client: AsyncClient) -> None:
     res = await client.post("/documents/upload", data=data, files=files)
     assert res.status_code == 400
     assert res.json()["detail"] == "invalid PDF"
+
+
+@pytest.mark.asyncio
+async def test_process_embedding_handles_expected_error(monkeypatch) -> None:
+    from src.server.routes import documents
+    from src.server.services.embedding import EmbeddingProcessingError
+
+    async def fake_generate(_: str):
+        raise EmbeddingProcessingError("boom")
+
+    async def fake_broadcast(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(documents, "generate_embedding", fake_generate)
+    monkeypatch.setattr(documents, "broadcast_upload_progress", fake_broadcast)
+
+    doc_id, project_id = uuid4(), uuid4()
+    documents.INGESTION_PROGRESS[doc_id] = {"status": "pending"}
+    await documents._process_embedding(doc_id, "content", FakeDB(), project_id)
+
+    assert documents.INGESTION_PROGRESS[doc_id]["status"] == "failed"
+    assert documents.INGESTION_PROGRESS[doc_id]["error"] == "boom"
+
+
+@pytest.mark.asyncio
+async def test_process_embedding_propagates_unexpected_exceptions(monkeypatch) -> None:
+    from src.server.routes import documents
+
+    async def fake_generate(_: str):
+        return [0.1]
+
+    async def fake_broadcast(*_args, **_kwargs):
+        return None
+
+    fake_db = FakeDB()
+
+    async def bad_store(*_args, **_kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(documents, "generate_embedding", fake_generate)
+    monkeypatch.setattr(documents, "broadcast_upload_progress", fake_broadcast)
+    monkeypatch.setattr(fake_db, "store_embedding", bad_store)
+
+    doc_id, project_id = uuid4(), uuid4()
+    documents.INGESTION_PROGRESS[doc_id] = {"status": "pending"}
+
+    with pytest.raises(RuntimeError):
+        await documents._process_embedding(doc_id, "content", fake_db, project_id)
+
+    assert documents.INGESTION_PROGRESS[doc_id]["status"] == "processing"
