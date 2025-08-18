@@ -30,6 +30,13 @@ from . import get_database_service
 from loguru import logger
 
 
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+class FileProcessingError(Exception):
+    """Raised when an uploaded file cannot be processed."""
+
+
 class DocumentUpdate(BaseModel):
     content: Optional[str] = None
     embeddings: Optional[List[float]] = None
@@ -48,11 +55,27 @@ INGESTION_PROGRESS: Dict[UUID, Dict[str, str]] = {}
 
 
 async def _read_file(file: UploadFile) -> str:
-    data = await file.read()
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    if size > MAX_FILE_SIZE:
+        raise FileProcessingError("file too large")
+    try:
+        data = await file.read()
+    except Exception as exc:  # noqa: BLE001
+        raise FileProcessingError("unable to read file") from exc
+
     if file.content_type == "application/pdf":
-        reader = PdfReader(io.BytesIO(data))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    return data.decode()
+        try:
+            reader = PdfReader(io.BytesIO(data))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as exc:  # noqa: BLE001
+            raise FileProcessingError("invalid PDF") from exc
+
+    try:
+        return data.decode()
+    except Exception as exc:  # noqa: BLE001
+        raise FileProcessingError("invalid text") from exc
 
 
 async def _process_embedding(
@@ -178,6 +201,8 @@ async def upload_document(
             logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
         background.add_task(_process_embedding, doc_id, content, db, source_id)
         return ResponseModel(status=ResponseStatus.SUCCESS, data={"id": doc_id})
+    except FileProcessingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="upload failed") from exc
 
