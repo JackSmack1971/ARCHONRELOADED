@@ -1,50 +1,39 @@
-import { z } from 'zod'
-import { logger } from '../utils/logger'
+import axios, { type AxiosInstance } from 'axios';
 
 export class ApiError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ApiError'
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
   }
 }
 
-const pathSchema = z.string().min(1)
+const API_URL = import.meta.env.VITE_API_URL || '';
 
-function getBaseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_API_BASE_URL
-  if (!url) throw new ApiError('API base URL not configured')
-  try {
-    return new URL(url).toString()
-  } catch {
-    throw new ApiError('Invalid API base URL')
+export const client: AxiosInstance = axios.create({
+  baseURL: API_URL,
+  timeout: 5000,
+});
+
+export async function request<T>(endpoint: string, retries = 3): Promise<T> {
+  if (!/^\/[\w-]+(?:\/[\w-]+)*$/.test(endpoint)) {
+    throw new ApiError('Invalid endpoint');
   }
-}
 
-export async function apiGet<T>(
-  path: string,
-  retries = 3,
-  timeout = 5000,
-  baseDelay = 100,
-): Promise<T> {
-  const result = pathSchema.safeParse(path)
-  if (!result.success) throw new ApiError('Invalid path')
-  const urlPath = result.data
-  const baseUrl = getBaseUrl()
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeout)
+  for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
-      const res = await fetch(`${baseUrl}${urlPath}`, { signal: controller.signal })
-      clearTimeout(timer)
-      if (!res.ok) throw new ApiError(`Request failed: ${res.status}`)
-      return (await res.json()) as T
-    } catch (err) {
-      clearTimeout(timer)
-      if (attempt === retries) throw new ApiError((err as Error).message)
-      const delay = baseDelay * 2 ** attempt
-      logger.info(`Retry ${attempt + 1} in ${delay}ms`)
-      await new Promise((r) => setTimeout(r, delay))
+      const { data } = await client.get<T>(endpoint);
+      return data;
+    } catch (error) {
+      if (attempt === retries - 1) {
+        if (axios.isAxiosError(error)) {
+          throw new ApiError(error.message, error.response?.status);
+        }
+        throw new ApiError('Unexpected error');
+      }
     }
   }
-  throw new ApiError('Request failed')
+  throw new ApiError('Request failed');
 }
