@@ -13,6 +13,7 @@ from src.server.models.project import Project, ProjectStatus
 from src.server.models.source import Source, SourceStatus, SourceType
 from src.server.models.document import Document
 from src.server.models.query import Query
+from src.server.routes.documents import MAX_FILE_SIZE
 
 
 class FakeDB:
@@ -253,3 +254,22 @@ async def test_upload_and_search_flow(client: AsyncClient) -> None:
     res = await client.post("/search", json=query)
     assert res.status_code == 200
     assert res.json()["data"][0]["id"] == doc_id
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_large_file(client: AsyncClient) -> None:
+    data = {"source_id": str(uuid4())}
+    big_content = b"x" * (MAX_FILE_SIZE + 1)
+    files = {"file": ("big.txt", big_content, "text/plain")}
+    res = await client.post("/documents/upload", data=data, files=files)
+    assert res.status_code == 400
+    assert res.json()["detail"] == "file too large"
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_malformed_pdf(client: AsyncClient) -> None:
+    data = {"source_id": str(uuid4())}
+    files = {"file": ("bad.pdf", b"not a pdf", "application/pdf")}
+    res = await client.post("/documents/upload", data=data, files=files)
+    assert res.status_code == 400
+    assert res.json()["detail"] == "invalid PDF"
