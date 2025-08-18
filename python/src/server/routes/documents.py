@@ -1,16 +1,30 @@
-"""Document CRUD and search routes."""
+"""Document routes including upload and ingestion progress."""
+
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any
-from uuid import UUID
+import io
+from uuid import UUID, uuid4
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Path,
+    UploadFile,
+    Form,
+    status,
+)
+from pydantic import BaseModel, UUID4
+from PyPDF2 import PdfReader
 
 from ..models.base import ResponseModel, ResponseStatus
 from ..models.document import Document
 from ..models.query import Query
 from ..services.database import DatabaseError, DatabaseService
+from ..services.embedding import generate_embedding
 from . import get_database_service
 
 
@@ -26,6 +40,30 @@ class SearchRequest(BaseModel):
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+INGESTION_PROGRESS: Dict[UUID, Dict[str, str]] = {}
+
+
+async def _read_file(file: UploadFile) -> str:
+    data = await file.read()
+    if file.content_type == "application/pdf":
+        reader = PdfReader(io.BytesIO(data))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    return data.decode()
+
+
+async def _process_embedding(
+    doc_id: UUID, content: str, db: DatabaseService
+) -> None:
+    INGESTION_PROGRESS[doc_id]["status"] = "processing"
+    try:
+        emb = await generate_embedding(content)
+        await db.store_embedding(doc_id, emb)
+        await db.update_document(doc_id, {"embeddings": emb})
+        INGESTION_PROGRESS[doc_id]["status"] = "completed"
+    except Exception as exc:  # noqa: BLE001
+        INGESTION_PROGRESS[doc_id] = {"status": "failed", "error": str(exc)}
 
 
 @router.post("/", response_model=ResponseModel[Document], status_code=status.HTTP_201_CREATED)
@@ -88,3 +126,38 @@ async def search_documents(
         return ResponseModel(status=ResponseStatus.SUCCESS, data=results)
     except DatabaseError as exc:
         raise HTTPException(status_code=500, detail="search failed") from exc
+
+
+@router.post("/upload", response_model=ResponseModel[Dict[str, UUID]], status_code=status.HTTP_202_ACCEPTED)
+async def upload_document(
+    background: BackgroundTasks,
+    source_id: UUID4 = Form(...),
+    file: UploadFile = File(...),
+    db: DatabaseService = Depends(get_database_service),
+) -> ResponseModel[Dict[str, UUID]]:
+    if file.content_type not in {"text/plain", "application/pdf"}:
+        raise HTTPException(status_code=400, detail="unsupported file type")
+    try:
+        content = await _read_file(file)
+        doc_id = uuid4()
+        doc = Document(
+            id=doc_id,
+            source_id=source_id,
+            content=content,
+            embeddings=[],
+            metadata={},
+        )
+        await db.create_document(doc)
+        INGESTION_PROGRESS[doc_id] = {"status": "queued"}
+        background.add_task(_process_embedding, doc_id, content, db)
+        return ResponseModel(status=ResponseStatus.SUCCESS, data={"id": doc_id})
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail="upload failed") from exc
+
+
+@router.get("/status/{doc_id}", response_model=ResponseModel[Dict[str, str]])
+async def ingestion_status(doc_id: UUID) -> ResponseModel[Dict[str, str]]:
+    status_info = INGESTION_PROGRESS.get(doc_id)
+    if not status_info:
+        raise HTTPException(status_code=404, detail="document not found")
+    return ResponseModel(status=ResponseStatus.SUCCESS, data=status_info)

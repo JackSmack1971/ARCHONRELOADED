@@ -1,7 +1,9 @@
 import pytest
+import asyncio
+from uuid import UUID, uuid4
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from uuid import uuid4
 
 from src.server import app
 from src.server.main import api
@@ -18,6 +20,7 @@ class FakeDB:
         self.projects = {}
         self.sources = {}
         self.documents = {}
+        self.embeddings = {}
 
     async def create_project(self, project: Project) -> Project:
         self.projects[project.id] = project
@@ -88,6 +91,15 @@ class FakeDB:
     async def vector_search(self, embedding, query: Query):
         return list(self.documents.values())[: query.match_count]
 
+    async def store_embedding(self, doc_id, embedding):
+        self.embeddings[doc_id] = embedding
+        doc = self.documents.get(doc_id)
+        if doc:
+            new_data = doc.model_dump()
+            new_data["embeddings"] = embedding
+            self.documents[doc_id] = Document(**new_data)
+        return True
+
 
 @pytest_asyncio.fixture
 async def client():
@@ -109,6 +121,7 @@ async def client():
         )
         token = res.json()["data"]["access_token"]
         client.headers.update({"Authorization": f"Bearer {token}"})
+        client.fake_db = fake_db
         yield client
     api.dependency_overrides.clear()
 
@@ -214,3 +227,29 @@ async def test_get_database_service_lifecycle(monkeypatch) -> None:
     service = await agen.__anext__()
     assert isinstance(service, DatabaseService)
     await agen.aclose()
+
+
+@pytest.mark.asyncio
+async def test_upload_and_search_flow(client: AsyncClient) -> None:
+    sid = uuid4()
+    files = {"file": ("doc.txt", b"hello world", "text/plain")}
+    data = {"source_id": str(sid)}
+    res = await client.post("/documents/upload", data=data, files=files)
+    assert res.status_code == 202
+    doc_id = res.json()["data"]["id"]
+    for _ in range(5):
+        await asyncio.sleep(0.1)
+        status_res = await client.get(f"/documents/status/{doc_id}")
+        if status_res.json()["data"]["status"] == "completed":
+            break
+    assert status_res.json()["data"]["status"] == "completed"
+    assert UUID(doc_id) in client.fake_db.embeddings
+    query = {
+        "query_text": "hello world",
+        "match_count": 5,
+        "filters": {},
+        "threshold": 0.5,
+    }
+    res = await client.post("/search", json=query)
+    assert res.status_code == 200
+    assert res.json()["data"][0]["id"] == doc_id
