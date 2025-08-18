@@ -16,7 +16,7 @@ import socketio
 
 from .config import settings
 from .auth.dependencies import require_role
-from .routes import auth, documents, health, projects, sources
+from .routes import auth, documents, health, projects, sources, search
 
 
 class HealthCheckError(Exception):
@@ -57,6 +57,7 @@ protected = [Depends(rate_limit), Depends(require_role("user"))]
 api.include_router(projects.router, dependencies=protected)
 api.include_router(sources.router, dependencies=protected)
 api.include_router(documents.router, dependencies=protected)
+api.include_router(search.router, dependencies=protected)
 
 
 @sio.event
