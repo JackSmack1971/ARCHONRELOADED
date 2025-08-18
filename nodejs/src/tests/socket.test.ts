@@ -22,7 +22,7 @@ describe('socket server', () => {
       query: { user_id: 'u1' },
       transports: ['websocket'],
     });
-    await new Promise((res) => client.on('connect', res));
+    await new Promise<void>((res) => client.on('connect', () => res()));
     client.emit('project_join', { projectId: 'p1' });
     await new Promise((r) => setTimeout(r, 50));
     const received = new Promise((res) => client.on('document:upload_progress', res));
