@@ -37,6 +37,18 @@ class FileProcessingError(Exception):
     """Raised when an uploaded file cannot be processed."""
 
 
+class UploadValidationError(Exception):
+    """Raised when an upload is invalid."""
+
+
+class DocumentCreationError(Exception):
+    """Raised when document creation fails."""
+
+
+class EmbeddingQueueError(Exception):
+    """Raised when queuing embedding generation fails."""
+
+
 class DocumentUpdate(BaseModel):
     content: Optional[str] = None
     embeddings: Optional[List[float]] = None
@@ -78,13 +90,36 @@ async def _read_file(file: UploadFile) -> str:
         raise FileProcessingError("invalid text") from exc
 
 
+async def _validate_upload(file: UploadFile) -> str:
+    """Validate uploaded file and return its content."""
+    if file.content_type not in {"text/plain", "application/pdf"}:
+        raise UploadValidationError("unsupported file type")
+    try:
+        return await _read_file(file)
+    except FileProcessingError as exc:
+        raise UploadValidationError(str(exc)) from exc
+
+
+async def _create_document_entry(
+    doc_id: UUID, source_id: UUID4, content: str, db: DatabaseService
+) -> Document:
+    """Store a new document in the database."""
+    doc = Document(
+        id=doc_id, source_id=source_id, content=content, embeddings=[], metadata={}
+    )
+    try:
+        return await db.create_document(doc)
+    except DatabaseError as exc:
+        raise DocumentCreationError("database create failed") from exc
+
+
 async def _process_embedding(
-    doc_id: UUID, content: str, db: DatabaseService, project_id: UUID4
+    doc_id: UUID, content: str, db: DatabaseService, source_id: UUID4
 ) -> None:
     INGESTION_PROGRESS[doc_id]["status"] = "processing"
     try:
         await broadcast_upload_progress(
-            str(project_id), {"doc_id": str(doc_id), "status": "processing"}
+            str(source_id), {"doc_id": str(doc_id), "status": "processing"}
         )
     except BroadcastError:
         logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
@@ -95,7 +130,7 @@ async def _process_embedding(
         INGESTION_PROGRESS[doc_id]["status"] = "completed"
         try:
             await broadcast_upload_progress(
-                str(project_id), {"doc_id": str(doc_id), "status": "completed"}
+                str(source_id), {"doc_id": str(doc_id), "status": "completed"}
             )
         except BroadcastError:
             logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
@@ -103,11 +138,32 @@ async def _process_embedding(
         INGESTION_PROGRESS[doc_id] = {"status": "failed", "error": str(exc)}
         try:
             await broadcast_upload_progress(
-                str(project_id),
+                str(source_id),
                 {"doc_id": str(doc_id), "status": "failed", "error": str(exc)},
             )
         except BroadcastError:
             logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
+
+
+async def _queue_embedding(
+    background: BackgroundTasks,
+    doc_id: UUID,
+    content: str,
+    db: DatabaseService,
+    source_id: UUID4,
+) -> None:
+    """Queue embedding generation and broadcast status."""
+    INGESTION_PROGRESS[doc_id] = {"status": "queued"}
+    try:
+        await broadcast_upload_progress(
+            str(source_id), {"doc_id": str(doc_id), "status": "queued"}
+        )
+    except BroadcastError:
+        logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
+    try:
+        background.add_task(_process_embedding, doc_id, content, db, source_id)
+    except Exception as exc:  # noqa: BLE001
+        raise EmbeddingQueueError("failed to queue embedding") from exc
 
 
 @router.post("/", response_model=ResponseModel[Document], status_code=status.HTTP_201_CREATED)
@@ -179,30 +235,18 @@ async def upload_document(
     file: UploadFile = File(...),
     db: DatabaseService = Depends(get_database_service),
 ) -> ResponseModel[Dict[str, UUID]]:
-    if file.content_type not in {"text/plain", "application/pdf"}:
-        raise HTTPException(status_code=400, detail="unsupported file type")
     try:
-        content = await _read_file(file)
+        content = await _validate_upload(file)
         doc_id = uuid4()
-        doc = Document(
-            id=doc_id,
-            source_id=source_id,
-            content=content,
-            embeddings=[],
-            metadata={},
-        )
-        await db.create_document(doc)
-        INGESTION_PROGRESS[doc_id] = {"status": "queued"}
-        try:
-            await broadcast_upload_progress(
-                str(source_id), {"doc_id": str(doc_id), "status": "queued"}
-            )
-        except BroadcastError:
-            logger.warning("upload progress broadcast failed", doc_id=str(doc_id))
-        background.add_task(_process_embedding, doc_id, content, db, source_id)
-        return ResponseModel(status=ResponseStatus.SUCCESS, data={"id": doc_id})
-    except FileProcessingError as exc:
+        doc = await _create_document_entry(doc_id, source_id, content, db)
+        await _queue_embedding(background, doc_id, content, db, source_id)
+        return ResponseModel(status=ResponseStatus.SUCCESS, data={"id": doc.id})
+    except UploadValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except DocumentCreationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except EmbeddingQueueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="upload failed") from exc
 
