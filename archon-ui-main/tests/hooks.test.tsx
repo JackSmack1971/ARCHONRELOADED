@@ -6,6 +6,16 @@ import { useUploadDocument } from '../src/hooks/useUploadDocument';
 import { useSearch } from '../src/hooks/useSearch';
 import * as api from '../src/services/api';
 
+const joinProject = vi.fn();
+const leaveProject = vi.fn();
+vi.mock('../src/hooks/useSocket', () => ({
+  useSocket: () => ({
+    socket: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
+    joinProject,
+    leaveProject,
+  }),
+}));
+
 const wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const client = new QueryClient();
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -21,13 +31,15 @@ describe('hooks', () => {
     expect(api.createProject).toHaveBeenCalled();
   });
 
-  it('useUploadDocument calls API', async () => {
+  it('useUploadDocument joins project and calls API', async () => {
     vi.spyOn(api, 'uploadDocument').mockResolvedValue({ id: 'd1', name: 't.txt' });
     const { result } = renderHook(() => useUploadDocument(), { wrapper });
     const file = new File(['data'], 't.txt', { type: 'text/plain' });
     await act(async () => {
       await result.current.mutateAsync({ projectId: 'p1', file });
     });
+    expect(joinProject).toHaveBeenCalledWith('p1');
+    expect(leaveProject).toHaveBeenCalledWith('p1');
     expect(api.uploadDocument).toHaveBeenCalled();
   });
 
