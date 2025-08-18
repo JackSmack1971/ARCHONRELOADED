@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi, describe, it, expect } from 'vitest';
 
-const handlers: Record<string, (arg?: any) => void> = {};
+const handlers: Record<string, (arg?: unknown) => void> = {};
 vi.mock('socket.io-client', () => {
   const mSocket = {
     on: vi.fn((e, cb) => { handlers[e] = cb; }),
