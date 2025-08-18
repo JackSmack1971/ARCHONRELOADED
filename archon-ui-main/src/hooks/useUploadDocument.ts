@@ -14,7 +14,9 @@ export const useUploadDocument = () => {
     if (!socket) return;
     const h = (d: UploadProgress) => setProgress(d);
     socket.on('document:upload_progress', h);
-    return () => socket.off('document:upload_progress', h);
+    return () => {
+      socket.off('document:upload_progress', h);
+    };
   }, [socket]);
 
   const mutation = useMutation<UploadResponse, Error, UploadVars>({

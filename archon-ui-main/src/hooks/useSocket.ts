@@ -25,7 +25,7 @@ const buildSocket = (
   s.on('disconnect', onDisconnect);
   s.on('user:join', ({ userId }) => onJoin(userId));
   s.on('user:leave', ({ userId }) => onLeave(userId));
-  s.on('reconnect', onConnect);
+  s.io.on('reconnect', onConnect);
   return s;
 };
 
@@ -46,7 +46,9 @@ export const useSocket = () => {
       (id) => setUsers((u) => u.filter((i) => i !== id)),
     );
     setSocket(s);
-    return () => s.disconnect();
+    return () => {
+      s.disconnect();
+    };
   }, []);
 
   const joinProject = useCallback((projectId: string) => {
