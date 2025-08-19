@@ -35,7 +35,8 @@ async def connect(sid: str, environ: Dict[str, Any]) -> None:
         user_id = query.get("user_id", [""])[0]
         token = query.get("token", [""])[0]
         if not user_id or not token:
-            raise SocketSessionError("user_id and token required")
+            logger.warning("missing user_id or token", sid=sid)
+            return
         try:
             payload = _jwt.verify_token(token)
         except JWTError as exc:
@@ -53,14 +54,17 @@ async def connect(sid: str, environ: Dict[str, Any]) -> None:
 @sio.event
 async def disconnect(sid: str) -> None:
     """Handle Socket.IO disconnects."""
-    session = await sio.get_session(sid)
+    try:
+        session = await sio.get_session(sid)
+    except KeyError:
+        logger.warning("disconnect on unknown session", sid=sid)
+        return
     user_id = session.get("user_id") if session else None
     if user_id and sid in _user_sessions.get(user_id, set()):
         _user_sessions[user_id].discard(sid)
         if not _user_sessions[user_id]:
             _user_sessions.pop(user_id)
-    rooms = sio.rooms(sid)
-    for room in rooms:
+    for room in sio.rooms(sid):
         if room.startswith("project:"):
             await sio.emit("user:leave", {"user_id": user_id}, room=room, skip_sid=sid)
     logger.info("socket disconnected", sid=sid)

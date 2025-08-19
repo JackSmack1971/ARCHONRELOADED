@@ -14,12 +14,12 @@ class MockClient:
     async def __aexit__(self, *exc_info):
         return False
 
-    async def get(self, url: str):
-        return httpx.Response(200, json={"ok": True}, request=httpx.Request("GET", url))
+    async def get(self, url: str, headers: dict[str, str] | None = None):
+        return httpx.Response(200, json={"ok": True}, request=httpx.Request("GET", url, headers=headers or {}))
 
 
 class FailingClient(MockClient):
-    async def get(self, url: str):  # type: ignore[override]
+    async def get(self, url: str, headers: dict[str, str] | None = None):  # type: ignore[override]
         raise httpx.HTTPError("boom")
 
 

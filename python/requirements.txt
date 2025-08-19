@@ -15,6 +15,11 @@ uvicorn>=0.35.0
 pyjwt>=2.10.1
 PyPDF2>=3.0.1
 prometheus-client>=0.21.0
+opentelemetry-api>=1.36.0
+opentelemetry-sdk>=1.36.0
+opentelemetry-exporter-otlp>=1.36.0
+opentelemetry-instrumentation-fastapi>=0.57b0
+opentelemetry-instrumentation-httpx>=0.57b0
 
 # Sub-dependencies (automatically resolved but listed for transparency)
 annotated-types>=0.7.0

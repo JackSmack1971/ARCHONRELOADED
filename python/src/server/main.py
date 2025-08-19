@@ -13,12 +13,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import socketio
 
 from src.common.logging import logger
-from src.common.metrics import setup_metrics, MetricsError
+from src.common.metrics import MetricsError, setup_metrics
+from src.common.tracing import TracingSetupError, setup_tracing
 
 from .config import settings
 from .auth.dependencies import require_role
 from .routes import auth, documents, health, projects, sources, search
-from .socket import sio
+from .socket import connect, disconnect, sio
 
 
 class HealthCheckError(Exception):
@@ -28,6 +29,11 @@ class HealthCheckError(Exception):
 # FastAPI application
 api = FastAPI()
 logger.info("Server application created")
+
+try:
+    setup_tracing("server", api)
+except TracingSetupError as exc:  # pragma: no cover - defensive
+    logger.error("Tracing setup failed", error=str(exc))
 
 try:
     setup_metrics(api, "server")
