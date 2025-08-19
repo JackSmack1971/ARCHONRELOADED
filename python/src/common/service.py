@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from src.utils import ExternalServiceError
 from .metrics import setup_metrics, MetricsError
+from .tracing import TracingSetupError, setup_tracing
 
 
 class ServiceCreationError(Exception):
@@ -20,6 +21,7 @@ def create_service(app_name: str = "service") -> FastAPI:
     """Create a FastAPI app with health, metrics, and error handlers."""
     try:
         app = FastAPI()
+        setup_tracing(app_name, app)
         app.get("/health")(_health)
         setup_metrics(app, app_name)
 
@@ -32,5 +34,5 @@ def create_service(app_name: str = "service") -> FastAPI:
             return JSONResponse(status_code=500, content={"detail": str(exc)})
 
         return app
-    except (MetricsError, Exception) as exc:  # pragma: no cover - defensive
+    except (MetricsError, TracingSetupError, Exception) as exc:  # pragma: no cover - defensive
         raise ServiceCreationError("Failed to create service") from exc

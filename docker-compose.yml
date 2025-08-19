@@ -20,6 +20,7 @@ services:
       - ARCHON_SERVER_PORT=${ARCHON_SERVER_PORT:-8181}
       - ARCHON_MCP_PORT=${ARCHON_MCP_PORT:-8051}
       - ARCHON_AGENTS_PORT=${ARCHON_AGENTS_PORT:-8052}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
     networks:
       - app-network
     volumes:
@@ -58,6 +59,7 @@ services:
       - ARCHON_MCP_PORT=${ARCHON_MCP_PORT:-8051}
       - ARCHON_SERVER_PORT=${ARCHON_SERVER_PORT:-8181}
       - ARCHON_AGENTS_PORT=${ARCHON_AGENTS_PORT:-8052}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
     networks:
       - app-network
     depends_on:
@@ -89,6 +91,7 @@ services:
       - SERVICE_DISCOVERY_MODE=docker_compose
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ARCHON_AGENTS_PORT=${ARCHON_AGENTS_PORT:-8052}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
     networks:
       - app-network
     healthcheck:
@@ -113,6 +116,15 @@ services:
       - archon-server
       - archon-mcp
       - archon-agents
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: Archon-Jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    networks:
+      - app-network
 
   # Frontend
   frontend:
@@ -140,3 +152,4 @@ services:
 networks:
   app-network:
     driver: bridge
+
