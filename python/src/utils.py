@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 from opentelemetry import propagate, trace
@@ -18,7 +19,9 @@ tracer = trace.get_tracer(__name__)
 async def fetch_with_retry(endpoint: str) -> dict[str, Any]:
     """Fetch JSON from an external API with retries and timeout."""
     base_url = os.getenv("EXTERNAL_API_BASE", "https://example.com")
-    url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+    url = urljoin(base_url.rstrip("/") + "/", endpoint)
+    if not url.startswith(base_url):
+        raise ExternalServiceError("Invalid endpoint")
     headers: dict[str, str] = {}
     with tracer.start_as_current_span("external.request", {"http.url": url}) as span:
         try:
