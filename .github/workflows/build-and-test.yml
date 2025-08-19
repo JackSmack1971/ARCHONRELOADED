@@ -43,9 +43,9 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
-          tags: ghcr.io/${{ github.repository }}:${{ matrix.service }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.service }}-cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.service }}-cache,mode=max
+          tags: ghcr.io/jacksmack1971/archonreloaded:${{ matrix.service }}
+          cache-from: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.service }}-cache
+          cache-to: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.service }}-cache,mode=max
       - name: Install dependencies
         working-directory: python
         run: pip install -r requirements.txt
@@ -100,9 +100,9 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
-          tags: ghcr.io/${{ github.repository }}:${{ matrix.package }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.package }}-cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.package }}-cache,mode=max
+          tags: ghcr.io/jacksmack1971/archonreloaded:${{ matrix.package }}
+          cache-from: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.package }}-cache
+          cache-to: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.package }}-cache,mode=max
       - name: Install dependencies
         working-directory: ${{ matrix.workdir }}
         run: npm ci
