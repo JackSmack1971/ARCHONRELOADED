@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
-from opentelemetry import trace, propagate
+from opentelemetry import propagate, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -35,6 +35,13 @@ def setup_tracing(service_name: str, app: FastAPI | None = None) -> None:
         HTTPXClientInstrumentor().instrument()
         if app:
             FastAPIInstrumentor().instrument_app(app)
-        propagate.set_global_textmap(propagate.get_global_textmap())
+        try:
+            from opentelemetry.trace.propagation.tracecontext import (
+                TraceContextTextMapPropagator,
+            )
+
+            propagate.set_global_textmap(TraceContextTextMapPropagator())
+        except Exception:  # pragma: no cover - optional dependency
+            propagate.set_global_textmap(propagate.get_global_textmap())
     except Exception as exc:  # pragma: no cover - defensive
         raise TracingSetupError("Tracing initialization failed") from exc

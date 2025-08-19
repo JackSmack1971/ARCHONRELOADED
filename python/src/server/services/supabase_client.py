@@ -4,8 +4,14 @@ import os
 from typing import Optional
 
 import httpx
+from opentelemetry import trace
 from supabase import AsyncClient, AsyncClientOptions, create_async_client
-from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    AsyncRetrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 
 class SupabaseClientError(Exception):
@@ -28,20 +34,30 @@ class SupabaseClient:
             timeout=timeout, limits=httpx.Limits(max_connections=pool)
         )
         self._client: Optional[AsyncClient] = None
+        self._tracer = trace.get_tracer(__name__)
 
     async def get_client(self) -> AsyncClient:
         """Get or create a connected Supabase client with retry logic."""
         if self._client is not None:
             return self._client
-        async for attempt in AsyncRetrying(
-            retry=retry_if_exception_type(httpx.HTTPError),
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(min=1, max=4),
-        ):
-            with attempt:
-                opts = AsyncClientOptions(httpx_client=self._session)
-                self._client = await create_async_client(self._url, self._key, opts)
-        return self._client
+        with self._tracer.start_as_current_span("supabase.connect") as span:
+            try:
+                async for attempt in AsyncRetrying(
+                    retry=retry_if_exception_type(httpx.HTTPError),
+                    stop=stop_after_attempt(3),
+                    wait=wait_exponential(min=1, max=4),
+                ):
+                    with attempt:
+                        opts = AsyncClientOptions(httpx_client=self._session)
+                        self._client = await create_async_client(
+                            self._url, self._key, opts
+                        )
+                if self._client is None:  # pragma: no cover - defensive
+                    raise SupabaseClientError("connection failed")
+                return self._client
+            except Exception as exc:  # pragma: no cover - retry wrapper
+                span.record_exception(exc)
+                raise SupabaseClientError("connection failed") from exc
 
     async def close(self) -> None:
         """Close the underlying HTTP session."""

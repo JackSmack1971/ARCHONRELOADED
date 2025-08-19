@@ -4,7 +4,7 @@ import time
 from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
-from prometheus_client import Counter, Histogram, make_asgi_app
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -40,7 +40,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         duration = time.perf_counter() - start
         try:
             REQUEST_COUNT.labels(
-                self.app_name, request.method, request.url.path, str(response.status_code)
+                self.app_name,
+                request.method,
+                request.url.path,
+                str(response.status_code),
             ).inc()
             REQUEST_LATENCY.labels(
                 self.app_name, request.method, request.url.path
@@ -53,8 +56,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 def setup_metrics(app: FastAPI, app_name: str) -> None:
     """Attach metrics middleware and expose /metrics endpoint."""
     try:
-        app.add_middleware(MetricsMiddleware, app_name=app_name)
-        app.mount("/metrics", make_asgi_app())
+        app.add_middleware(MetricsMiddleware, app_name=app_name)  # type: ignore[arg-type]
+
+        @app.get("/metrics")
+        async def _metrics() -> Response:  # pragma: no cover - simple wrapper
+            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
     except Exception as exc:  # pragma: no cover - defensive
         raise MetricsError("Failed to set up metrics") from exc
-
