@@ -15,7 +15,11 @@ class MockClient:
         return False
 
     async def get(self, url: str, headers: dict[str, str] | None = None):
-        return httpx.Response(200, json={"ok": True}, request=httpx.Request("GET", url, headers=headers or {}))
+        return httpx.Response(
+            200,
+            json={"ok": True},
+            request=httpx.Request("GET", url, headers=headers or {}),
+        )
 
 
 class FailingClient(MockClient):
@@ -35,3 +39,16 @@ async def test_fetch_with_retry_error(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
     with pytest.raises(ExternalServiceError):
         await fetch_with_retry("test")
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_retry_rejects_absolute_url() -> None:
+    with pytest.raises(ExternalServiceError):
+        await fetch_with_retry("https://evil.com")
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_retry_rejects_path_traversal(monkeypatch) -> None:
+    monkeypatch.setenv("EXTERNAL_API_BASE", "https://example.com/api")
+    with pytest.raises(ExternalServiceError):
+        await fetch_with_retry("../secret")
