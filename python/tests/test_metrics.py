@@ -1,11 +1,15 @@
+import os
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.server import api as server_app
-from src.common.service import create_service
+os.environ.setdefault("MCP_API_KEY", "test-key")
+os.environ.setdefault("SUPABASE_URL", "http://example.com")
+os.environ.setdefault("SUPABASE_KEY", "key")
 
-mcp_app = create_service("mcp")
-agents_app = create_service("agents")
+from src.server import api as server_app
+from src.mcp.mcp_server import app as mcp_app
+from src.agents.main import app as agents_app
 
 
 @pytest.mark.asyncio
@@ -20,10 +24,10 @@ agents_app = create_service("agents")
 async def test_metrics_endpoint(app, app_name) -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        await client.get("/metrics/")
-        res = await client.get("/metrics/")
+        await client.get("/health")
+        res = await client.get("/metrics")
     assert res.status_code == 200
     body = res.text
     assert "http_requests_total" in body
     assert f'app="{app_name}"' in body
-    assert 'path="/metrics/"' in body
+    assert 'path="/health"' in body
