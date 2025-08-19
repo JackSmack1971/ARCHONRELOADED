@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import socketio
 
 from src.common.logging import logger
+from src.common.metrics import setup_metrics, MetricsError
 
 from .config import settings
 from .auth.dependencies import require_role
@@ -27,6 +28,11 @@ class HealthCheckError(Exception):
 # FastAPI application
 api = FastAPI()
 logger.info("Server application created")
+
+try:
+    setup_metrics(api, "server")
+except MetricsError as exc:  # pragma: no cover - defensive
+    logger.error("Metrics setup failed", error=str(exc))
 
 api.add_middleware(
     CORSMiddleware,
