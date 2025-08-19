@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.server import app as server_app
+from src.server import api as server_app
 from src.common.service import create_service
 
 mcp_app = create_service("mcp")
