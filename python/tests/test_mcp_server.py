@@ -115,7 +115,11 @@ async def test_tool_workflow() -> None:
         res = await client.post(
             "/rpc",
             headers=headers,
-            json={"id": "5", "method": "get_document", "params": {"document_id": str(doc_id)}},
+            json={
+                "id": "5",
+                "method": "get_document",
+                "params": {"document_id": str(doc_id)},
+            },
         )
         assert res.json()["result"]["id"] == str(doc_id)
         # task creation and status
@@ -132,7 +136,11 @@ async def test_tool_workflow() -> None:
         res = await client.post(
             "/rpc",
             headers=headers,
-            json={"id": "7", "method": "get_task_status", "params": {"task_id": task_id}},
+            json={
+                "id": "7",
+                "method": "get_task_status",
+                "params": {"task_id": task_id},
+            },
         )
         assert res.json()["result"]["status"] == "pending"
 
@@ -143,3 +151,27 @@ async def test_auth_required() -> None:
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         res = await client.post("/rpc", json={"id": "1", "method": "tools/list"})
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tool_error_logs(monkeypatch) -> None:
+    async def fail(params):
+        raise mcp_server.ToolExecutionError("boom")
+
+    called: dict[str, str] = {}
+
+    async def fake_log_error(message: str, **data):
+        called["message"] = message
+
+    monkeypatch.setitem(mcp_server.TOOLS, "boom", fail)
+    monkeypatch.setattr(mcp_server, "log_error", fake_log_error)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        headers = {"Authorization": "Bearer test-key"}
+        res = await client.post(
+            "/rpc", headers=headers, json={"id": "1", "method": "boom"}
+        )
+
+    assert res.status_code == 400
+    assert called["message"] == "Tool execution failed"
