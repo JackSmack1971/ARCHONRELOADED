@@ -8,11 +8,11 @@ application to enable real-time features.
 
 from __future__ import annotations
 
-import sys
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from loguru import logger
 import socketio
+
+from src.common.logging import logger
 
 from .config import settings
 from .auth.dependencies import require_role
@@ -24,13 +24,9 @@ class HealthCheckError(Exception):
     """Raised when the health check fails."""
 
 
-# Configure structured JSON logging
-logger.remove()
-logger.add(sys.stdout, serialize=True)
-
-
 # FastAPI application
 api = FastAPI()
+logger.info("Server application created")
 
 api.add_middleware(
     CORSMiddleware,

@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from src.common.logging import logger, log_info
 from src.common.service import create_service
 
 from . import ToolExecutionError
@@ -47,6 +48,7 @@ async def _limit_error(_: Request, exc: RateLimitError) -> JSONResponse:
 def _check_auth(request: Request) -> None:
     token = request.headers.get("Authorization", "")
     if token != f"Bearer {API_KEY}":
+        logger.warning("Invalid API key", token=token)
         raise AuthenticationError("Invalid API key")
 
 
@@ -56,6 +58,7 @@ def _check_rate_limit(request: Request) -> None:
     window = RATE_LIMIT.setdefault(key, [])
     window[:] = [t for t in window if now - t < WINDOW_SECONDS]
     if len(window) >= MAX_REQUESTS:
+        logger.warning("Rate limit exceeded", client=key)
         raise RateLimitError("Rate limit exceeded")
     window.append(now)
 
@@ -64,6 +67,7 @@ def _check_rate_limit(request: Request) -> None:
 async def sse_endpoint(request: Request, client_id: str, close: bool = False) -> Any:
     _check_auth(request)
     _check_rate_limit(request)
+    await log_info("SSE connection", client_id=client_id, close=close)
     return await transport.connect(client_id, close=close)
 
 
@@ -78,6 +82,7 @@ class RPCRequest(BaseModel):  # We'll need to import BaseModel at top
 async def rpc_endpoint(req: RPCRequest, request: Request) -> JSONResponse:
     _check_auth(request)
     _check_rate_limit(request)
+    await log_info("RPC call", method=req.method)
     if req.method == "tools/list":
         result = {"tools": list(TOOLS.keys())}
     else:
@@ -87,6 +92,7 @@ async def rpc_endpoint(req: RPCRequest, request: Request) -> JSONResponse:
         try:
             result = await tool(req.params)
         except ToolExecutionError as exc:
+            logger.error("Tool execution failed", method=req.method, error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = {"jsonrpc": "2.0", "id": req.id, "result": result}
     if req.client_id:
