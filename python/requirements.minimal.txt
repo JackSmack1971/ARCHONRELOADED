@@ -1,0 +1,16 @@
+# Minimal Core Dependencies for ARCHON RELOADED
+# Only the essential packages defined in pyproject.toml
+# Use this for minimal deployments or Docker multi-stage builds
+
+fastapi>=0.116.1
+httpx>=0.28.1
+loguru>=0.7.3
+pydantic-settings>=2.10.1
+python-dotenv>=1.1.1
+python-multipart>=0.0.9
+python-socketio[asgi]>=5.13.0
+supabase>=2.18.1
+tenacity>=9.1.2
+uvicorn>=0.35.0
+pyjwt>=2.10.1
+PyPDF2>=3.0.1
