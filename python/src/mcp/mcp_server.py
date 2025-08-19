@@ -31,7 +31,7 @@ class RateLimitError(Exception):
     """Raised when rate limit is exceeded."""
 
 
-app = create_service()
+app = create_service("mcp")
 transport = SSETransport()
 
 

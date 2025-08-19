@@ -7,3 +7,15 @@ scrape_configs:
       - targets:
           - '${TEI_METRICS_ENDPOINT:-tei:9090}'
           - '${VLLM_METRICS_ENDPOINT:-vllm:9090}'
+  - job_name: 'archon-server'
+    static_configs:
+      - targets:
+          - 'archon-server:8080'
+  - job_name: 'archon-mcp'
+    static_configs:
+      - targets:
+          - 'archon-mcp:8051'
+  - job_name: 'archon-agents'
+    static_configs:
+      - targets:
+          - 'archon-agents:8052'

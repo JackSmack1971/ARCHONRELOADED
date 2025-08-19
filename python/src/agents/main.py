@@ -10,7 +10,7 @@ class TaskRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=100)
 
 
-app = create_service()
+app = create_service("agents")
 
 
 @app.post("/run")
