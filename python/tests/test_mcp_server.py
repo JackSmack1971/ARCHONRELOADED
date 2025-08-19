@@ -1,3 +1,4 @@
+import importlib
 import os
 from typing import Set
 from uuid import uuid4
@@ -10,10 +11,12 @@ os.environ["MCP_API_KEY"] = "test-key"
 os.environ["SUPABASE_URL"] = "http://example.com"
 os.environ["SUPABASE_KEY"] = "key"
 
-from src.mcp.mcp_server import app  # noqa: E402
+import src.mcp.mcp_server as mcp_server  # noqa: E402
 from src.mcp import deps  # noqa: E402
 from src.server.models.document import Document  # noqa: E402
 from src.server.models.project import Project  # noqa: E402
+
+app = mcp_server.app
 
 
 class FakeDatabaseService:
@@ -42,6 +45,16 @@ class FakeDatabaseService:
 
 fake_db = FakeDatabaseService()
 deps.db_service = fake_db
+
+
+def test_missing_api_key(monkeypatch) -> None:
+    monkeypatch.delenv("MCP_API_KEY", raising=False)
+    with pytest.raises(Exception) as exc:
+        importlib.reload(mcp_server)
+    assert isinstance(exc.value, mcp_server.ConfigurationError)
+    monkeypatch.setenv("MCP_API_KEY", "test-key")
+    global app
+    app = importlib.reload(mcp_server).app
 
 
 @pytest.mark.asyncio
