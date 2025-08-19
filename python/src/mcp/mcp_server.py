@@ -17,7 +17,14 @@ from . import ToolExecutionError
 from .tools import TOOLS
 from .transport.sse import SSETransport
 
+class ConfigurationError(Exception):
+    """Raised when required configuration is missing."""
+
+
 API_KEY = os.getenv("MCP_API_KEY", "")
+if not API_KEY:
+    raise ConfigurationError("MCP_API_KEY environment variable is required")
+
 RATE_LIMIT: Dict[str, list[float]] = {}
 MAX_REQUESTS = 10
 WINDOW_SECONDS = 60.0
