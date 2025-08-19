@@ -1,0 +1,110 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: server
+            dockerfile: python/Dockerfile.server
+            context: python
+          - service: agents
+            dockerfile: python/Dockerfile.agents
+            context: python
+          - service: mcp
+            dockerfile: python/Dockerfile.mcp
+            context: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: python/requirements.txt
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.service }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.service }}-cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.service }}-cache,mode=max
+      - name: Install dependencies
+        working-directory: python
+        run: pip install -r requirements.txt
+      - name: Test
+        working-directory: python
+        run: pytest --maxfail=1 --disable-warnings --cov=. --cov-report=xml
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.service }}
+          path: python/coverage.xml
+          if-no-files-found: ignore
+
+  node:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - package: nodejs
+            workdir: nodejs
+            dockerfile: nodejs/Dockerfile.mcp
+            context: nodejs
+          - package: archon-ui-main
+            workdir: archon-ui-main
+            dockerfile: archon-ui-main/Dockerfile
+            context: archon-ui-main
+          - package: docs
+            workdir: docs
+            dockerfile: docs/Dockerfile
+            context: docs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.workdir }}/package-lock.json
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.package }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.package }}-cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:${{ matrix.package }}-cache,mode=max
+      - name: Install dependencies
+        working-directory: ${{ matrix.workdir }}
+        run: npm ci
+      - name: Test
+        working-directory: ${{ matrix.workdir }}
+        run: npx vitest run --coverage
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.package }}
+          path: ${{ matrix.workdir }}/coverage
+          if-no-files-found: ignore
