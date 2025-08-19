@@ -12,14 +12,14 @@ jobs:
       matrix:
         include:
           - service: server
-            dockerfile: python/Dockerfile.server
             context: python
+            dockerfile: Dockerfile.server
           - service: agents
-            dockerfile: python/Dockerfile.agents
             context: python
+            dockerfile: Dockerfile.agents
           - service: mcp
-            dockerfile: python/Dockerfile.mcp
             context: python
+            dockerfile: Dockerfile.mcp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,7 +41,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           push: false
           tags: ghcr.io/jacksmack1971/archonreloaded:${{ matrix.service }}
           cache-from: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.service }}-cache
@@ -67,16 +67,16 @@ jobs:
         include:
           - package: nodejs
             workdir: nodejs
-            dockerfile: nodejs/Dockerfile.mcp
             context: nodejs
+            dockerfile: Dockerfile.mcp
           - package: archon-ui-main
             workdir: archon-ui-main
-            dockerfile: archon-ui-main/Dockerfile
             context: archon-ui-main
+            dockerfile: Dockerfile
           - package: docs
             workdir: docs
-            dockerfile: docs/Dockerfile
             context: docs
+            dockerfile: Dockerfile
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -98,7 +98,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           push: false
           tags: ghcr.io/jacksmack1971/archonreloaded:${{ matrix.package }}
           cache-from: type=registry,ref=ghcr.io/jacksmack1971/archonreloaded:${{ matrix.package }}-cache
