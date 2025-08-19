@@ -99,15 +99,25 @@ docker-compose logs -f archon-mcp
 
 Import prebuilt Grafana dashboards to visualize latency, throughput, error rates, and CPU saturation for each microservice:
 
-1. Start the monitoring stack:
+1. Set the Prometheus data source URL:
+
+   ```bash
+   export PROMETHEUS_URL=http://prometheus:9090
+   ```
+
+2. Start the monitoring stack:
 
    ```bash
    docker-compose up -d grafana prometheus
    ```
 
-2. Navigate to Grafana at `http://localhost:3000` and log in (default password `admin` unless overridden).
-3. The dashboards are provisioned from `monitoring/dashboards/` and appear under the "Archon" folder.
-4. Ensure the Prometheus data source URL is set via the `PROMETHEUS_URL` environment variable.
+3. Open Grafana at `http://localhost:3000` and log in (default password `admin` unless overridden).
+4. Dashboards for each service appear under the **Archon** folder:
+   - **Archon Server** – API layer metrics
+   - **Archon MCP** – model control plane metrics
+   - **Archon Agents** – agent service metrics
+   - **Archon Frontend** – web UI metrics
+5. To import a dashboard manually, go to **Dashboards → Import → Upload JSON** and select a file from `monitoring/dashboards/`.
 
 ### Database Monitoring
 
