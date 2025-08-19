@@ -1,0 +1,18 @@
+# Development Dependencies for ARCHON RELOADED
+# Generated from pyproject.toml [dependency-groups.dev] for compatibility
+# Primary dependency management should continue using: uv sync --all-extras
+
+# Include all production dependencies
+-r requirements.txt
+
+# Development-only dependencies
+black>=25.1.0
+pytest>=8.4.1
+pytest-asyncio>=1.1.0
+pytest-cov>=6.2.1
+
+# Additional recommended development tools (not in pyproject.toml but commonly used)
+# Uncomment if needed:
+# ruff>=0.1.0          # Modern Python linter and formatter
+# mypy>=1.0.0          # Static type checker
+# pre-commit>=3.0.0    # Git hooks for code quality
