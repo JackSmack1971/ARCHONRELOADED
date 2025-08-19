@@ -10,12 +10,13 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from src.common.logging import logger, log_info
+from src.common.logging import logger, log_info, log_error
 from src.common.service import create_service
 
 from . import ToolExecutionError
 from .tools import TOOLS
 from .transport.sse import SSETransport
+
 
 class ConfigurationError(Exception):
     """Raised when required configuration is missing."""
@@ -99,7 +100,7 @@ async def rpc_endpoint(req: RPCRequest, request: Request) -> JSONResponse:
         try:
             result = await tool(req.params)
         except ToolExecutionError as exc:
-            logger.error("Tool execution failed", method=req.method, error=str(exc))
+            await log_error("Tool execution failed", method=req.method, error=str(exc))
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = {"jsonrpc": "2.0", "id": req.id, "result": result}
     if req.client_id:

@@ -12,14 +12,14 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
 
-from src.common.logging import logger
+from src.common.logging import logger, log_info
 from src.common.metrics import MetricsError, setup_metrics
 from src.common.tracing import TracingSetupError, setup_tracing
 
 from .config import settings
 from .auth.dependencies import require_role
 from .routes import auth, documents, health, projects, sources, search
-from .socket import connect, disconnect, sio
+from .socket import sio
 
 
 class HealthCheckError(Exception):
@@ -28,7 +28,13 @@ class HealthCheckError(Exception):
 
 # FastAPI application
 api = FastAPI()
-logger.info("Server application created")
+
+
+@api.on_event("startup")
+async def _log_startup() -> None:
+    """Log server startup."""
+    await log_info("Server application started")
+
 
 try:
     setup_tracing("server", api)
