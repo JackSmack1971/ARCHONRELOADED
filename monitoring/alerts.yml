@@ -1,3 +1,4 @@
+# Prometheus alert rules for Archon services
 groups:
   - name: service-performance
     rules:
@@ -32,3 +33,4 @@ groups:
         annotations:
           summary: {{ $labels.job }} is down
           description: Service {{ $labels.job }} has been unreachable for over 1 minute.
+
