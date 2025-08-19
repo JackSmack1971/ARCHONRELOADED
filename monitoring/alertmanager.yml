@@ -1,0 +1,13 @@
+route:
+  receiver: 'team-notifications'
+
+receivers:
+  - name: 'team-notifications'
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        from: '${ALERT_EMAIL_FROM}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+    webhook_configs:
+      - url: '${ALERT_WEBHOOK_URL}'
