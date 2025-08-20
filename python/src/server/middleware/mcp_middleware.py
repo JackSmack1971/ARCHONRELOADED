@@ -62,13 +62,20 @@ class MCPMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _is_mcp_request(request: Request) -> bool:
-        header = request.headers.get("X-MCP-Request") == "true"
-        ctype = request.headers.get("content-type") == "application/mcp+json"
+        """Return True if the request targets the MCP middleware."""
+        header = request.headers.get("X-MCP-Request", "").lower() == "true"
+        ctype = (
+            request.headers.get("content-type", "").lower() == "application/mcp+json"
+        )
         return header or ctype
 
     @staticmethod
     def _validate_payload(payload: Any) -> None:
-        if not isinstance(payload, dict) or "action" not in payload:
+        """Validate MCP payload structure."""
+        if not isinstance(payload, dict):
+            raise InvalidMCPPayloadError("payload_not_object")
+        action = payload.get("action")
+        if not isinstance(action, str) or not action:
             raise InvalidMCPPayloadError("missing_action")
 
     async def _call_handler_with_retry(
@@ -80,7 +87,7 @@ class MCPMiddleware(BaseHTTPMiddleware):
             except asyncio.TimeoutError as exc:
                 if attempt == self.retries - 1:
                     raise MCPServiceError("timeout") from exc
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
             except Exception as exc:
                 raise MCPServiceError("handler_error") from exc
         raise MCPServiceError("unreachable")
